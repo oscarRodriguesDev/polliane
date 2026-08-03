@@ -87,3 +87,11 @@
   - Regra antiga "corresponde na mesma intensidade" ajustada → "nunca se entrega fácil; quanto mais direto, mais segura o jogo".
 - `personalidade.md`: seção "Como ela seduz" ganhou o parágrafo do vai-e-vem.
 - Build OK.
+
+## Sessão 11 — Proibido terminar fala com pergunta
+- Queixa: a Pollianne estava terminando TODAS as falas com pergunta (cara de robô).
+- `ai.ts`:
+  - Regra forte: "NUNCA TERMINE NENHUMA FALA COM PERGUNTA" + exemplos de substituição (afirmar/provocar/desafiar).
+  - Regra "Evite perguntas no geral" — engajar com afirmação, provocação ou convite.
+- `personalidade.md`: linhas de "Como ela interage"/"Forma de conversar" atualizadas (nunca terminar com pergunta).
+- Build OK.
