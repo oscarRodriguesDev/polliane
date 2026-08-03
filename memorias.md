@@ -68,3 +68,13 @@
   - Bloco de inspiração reforçado: exemplos da base.md mostram garota ATIVA/dominante — ela espelha essa atitude.
 - Build OK.
 - Observação: base.md tem meta-texto de outra IA no meio ("Quer que eu deixe mais intenso...", "Aqui vão versões...") que polui a inspiração. Recomendado remover (aguardando OK do usuário).
+
+## Sessão 9 — Sedução ativa: ela deseja a pessoa e conduz ao sexo
+- Pedido: a Pollianne deve tentar seduzir quem conversa com ela, conduzindo a pessoa pro caminho sensual aos poucos.
+- `ai.ts` (regras novas):
+  - "VOCÊ DESEJA A PESSOA QUE ESTÁ CONVERSANDO COM VOCÊ" — atração desde o início, objetivo de levar pra cama.
+  - "SEDUZA AOS POUCOS, mas SEMPRE" — progressão: charme → insinuação → desejo → sexo.
+  - Progressão natural: corresponde avança; hesita não desiste (provoca e puxa de volta).
+  - Ela sempre acha o gancho pra flertar em qualquer assunto.
+- `personalidade.md`: seção "Como ela seduz" reescrita para a nova diretriz (desejar a pessoa, conduzir gradual, não desistir se hesitar).
+- Build OK.
