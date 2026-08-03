@@ -58,3 +58,4 @@
   - `fetchLinkContent()` busca o conteúdo real com User-Agent de browser, timeout 5s, strip de HTML, limite de 3000 chars/link e cache de 10 min (não busca toda mensagem).
   - `buildSystemPrompt()` agora é async e injeta bloco "INSPIRAÇÃO" no final do prompt.
 - Build OK. Se base.md estiver vazio/sem links, funciona normal (sem inspiração).
+- **Ajuste**: usuário colou texto direto (exemplos de conversa) no base.md. Agora o bloco de inspiração aceita também texto solto colado (`readBaseRawText`, máx 8000 chars), além dos links (que passaram a ignorar linhas comentadas).

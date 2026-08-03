@@ -100,20 +100,43 @@ function readPersonality(): string {
 const BASE_FILE = path.join(process.cwd(), "base.md");
 const MAX_LINKS = 8;
 const MAX_CHARS_PER_LINK = 3000;
+const MAX_RAW_CHARS = 8000;
 const FETCH_TIMEOUT_MS = 5000;
 const CACHE_TTL_MS = 10 * 60 * 1000; // 10 min
 
 type CachedContent = { content: string; fetchedAt: number };
 const linkCache = new Map<string, CachedContent>();
 
-// Extrai todas as URLs do base.md (ignora comentários).
+// Extrai todas as URLs do base.md, ignorando linhas de comentário.
 function readBaseLinks(): string[] {
   try {
     const raw = readFileSync(BASE_FILE, "utf-8");
-    const urls = raw.match(/https?:\/\/[^\s)"'<>]+/g) ?? [];
+    const content = raw
+      .split("\n")
+      .filter((line) => !line.trim().startsWith("#"))
+      .join("\n");
+    const urls = content.match(/https?:\/\/[^\s)"'<>]+/g) ?? [];
     return [...new Set(urls)].slice(0, MAX_LINKS);
   } catch {
     return [];
+  }
+}
+
+// Lê o texto de inspiração direto do base.md (sem comentários e sem URLs,
+// que são buscadas separadamente). Permite colar exemplos de conversa soltos.
+function readBaseRawText(): string {
+  try {
+    const raw = readFileSync(BASE_FILE, "utf-8");
+    const clean = raw
+      .split("\n")
+      .filter((line) => !line.trim().startsWith("#"))
+      .join("\n")
+      .replace(/https?:\/\/[^\s)"'<>]+/g, "")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim();
+    return clean;
+  } catch {
+    return "";
   }
 }
 
@@ -154,12 +177,20 @@ async function fetchLinkContent(url: string): Promise<string> {
   }
 }
 
-// Monta o bloco de inspiração com o conteúdo real dos links da base.md.
+// Monta o bloco de inspiração com o conteúdo real dos links e/ou o texto
+// direto colado no base.md (ex.: exemplos de conversa).
 async function buildInspirationBlock(): Promise<string | null> {
   const links = readBaseLinks();
-  if (links.length === 0) return null;
+  const rawText = readBaseRawText();
 
   const sections: string[] = [];
+
+  // Texto direto colado no base.md.
+  if (rawText) {
+    sections.push(`Exemplo direto do arquivo base.md:\n${rawText.slice(0, MAX_RAW_CHARS)}`);
+  }
+
+  // Conteúdo real dos links.
   for (const url of links) {
     const content = await fetchLinkContent(url);
     if (!content) continue;
@@ -169,7 +200,7 @@ async function buildInspirationBlock(): Promise<string | null> {
   if (sections.length === 0) return null;
 
   return [
-    "INSPIRAÇÃO — conteúdo real de fontes externas (arquivo base.md).",
+    "INSPIRAÇÃO — material de referência (arquivo base.md).",
     "Use essas referências para enriquecer suas respostas: tom de voz, vocabulário, gírias, opiniões, memórias e assuntos que combinam com você.",
     "NUNCA cite URLs, não diga que leu um site nem mencione que isso é 'inspiração'. Incorpore o conteúdo com naturalidade, como se fosse parte da sua vida.",
     "---",
