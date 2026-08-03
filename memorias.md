@@ -95,3 +95,13 @@
   - Regra "Evite perguntas no geral" — engajar com afirmação, provocação ou convite.
 - `personalidade.md`: linhas de "Como ela interage"/"Forma de conversar" atualizadas (nunca terminar com pergunta).
 - Build OK.
+
+## Sessão 12 — Caixa de texto fixa
+- Queixa: a caixa de texto saía da tela (rolava junto com as mensagens).
+- Causa: cadeia de altura quebrada — `body`/`main` não passavam altura fixa, então o chat crescia além da viewport.
+- Corrigido:
+  - `layout.tsx`: `<body>` agora `h-full flex flex-col overflow-hidden`.
+  - `page.tsx`: `<main>` com `h-full w-full`.
+  - `Chat.tsx`: container com `h-dvh` (altura da viewport, funciona no mobile).
+- Resultado: só a lista de mensagens rola; input fica fixo embaixo.
+- Build OK.

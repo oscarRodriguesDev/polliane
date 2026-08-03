@@ -127,7 +127,7 @@ export default function Chat() {
   }
 
   return (
-    <div className="relative flex h-full w-full flex-1 flex-col overflow-hidden">
+    <div className="relative flex h-dvh w-full flex-col overflow-hidden">
       {/* Halos decorativos de fundo */}
       <div
         aria-hidden
