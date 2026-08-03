@@ -50,3 +50,11 @@
 ## Sessão 6 — Foco automático na caixa de texto
 - `Chat.tsx`: `inputRef` + `useEffect` focado no input sempre que `loading` volta a `false`. Depois de enviar, o cursor volta sozinho pra caixa de texto — sem clicar com o mouse.
 - Build OK.
+
+## Sessão 7 — base.md (inspiração externa)
+- Criado `base.md` na raiz: lista de links que a Pollianne consulta como inspiração (um por linha, `#` ignora comentário).
+- `ai.ts`:
+  - `readBaseLinks()` extrai URLs do base.md (máx 8).
+  - `fetchLinkContent()` busca o conteúdo real com User-Agent de browser, timeout 5s, strip de HTML, limite de 3000 chars/link e cache de 10 min (não busca toda mensagem).
+  - `buildSystemPrompt()` agora é async e injeta bloco "INSPIRAÇÃO" no final do prompt.
+- Build OK. Se base.md estiver vazio/sem links, funciona normal (sem inspiração).

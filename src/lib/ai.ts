@@ -95,9 +95,92 @@ function readPersonality(): string {
   return readFileSync(filePath, "utf-8");
 }
 
-export function buildSystemPrompt(): string {
-  const personality = readPersonality();
+// ---------- Inspiração externa (base.md) ----------
+
+const BASE_FILE = path.join(process.cwd(), "base.md");
+const MAX_LINKS = 8;
+const MAX_CHARS_PER_LINK = 3000;
+const FETCH_TIMEOUT_MS = 5000;
+const CACHE_TTL_MS = 10 * 60 * 1000; // 10 min
+
+type CachedContent = { content: string; fetchedAt: number };
+const linkCache = new Map<string, CachedContent>();
+
+// Extrai todas as URLs do base.md (ignora comentários).
+function readBaseLinks(): string[] {
+  try {
+    const raw = readFileSync(BASE_FILE, "utf-8");
+    const urls = raw.match(/https?:\/\/[^\s)"'<>]+/g) ?? [];
+    return [...new Set(urls)].slice(0, MAX_LINKS);
+  } catch {
+    return [];
+  }
+}
+
+// Converte HTML bruto em texto legível.
+function stripHtml(html: string): string {
+  return html
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+// Busca o conteúdo de um link com timeout e cache (evita buscar toda mensagem).
+async function fetchLinkContent(url: string): Promise<string> {
+  const cached = linkCache.get(url);
+  if (cached && Date.now() - cached.fetchedAt < CACHE_TTL_MS) {
+    return cached.content;
+  }
+
+  try {
+    const response = await fetch(url, {
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36",
+      },
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+    });
+
+    if (!response.ok) return "";
+
+    const html = await response.text();
+    const content = stripHtml(html).slice(0, MAX_CHARS_PER_LINK);
+    linkCache.set(url, { content, fetchedAt: Date.now() });
+    return content;
+  } catch {
+    return "";
+  }
+}
+
+// Monta o bloco de inspiração com o conteúdo real dos links da base.md.
+async function buildInspirationBlock(): Promise<string | null> {
+  const links = readBaseLinks();
+  if (links.length === 0) return null;
+
+  const sections: string[] = [];
+  for (const url of links) {
+    const content = await fetchLinkContent(url);
+    if (!content) continue;
+    sections.push(`Fonte: ${url}\n${content}`);
+  }
+
+  if (sections.length === 0) return null;
+
   return [
+    "INSPIRAÇÃO — conteúdo real de fontes externas (arquivo base.md).",
+    "Use essas referências para enriquecer suas respostas: tom de voz, vocabulário, gírias, opiniões, memórias e assuntos que combinam com você.",
+    "NUNCA cite URLs, não diga que leu um site nem mencione que isso é 'inspiração'. Incorpore o conteúdo com naturalidade, como se fosse parte da sua vida.",
+    "---",
+    sections.join("\n\n---\n\n"),
+    "---",
+  ].join("\n");
+}
+
+export async function buildSystemPrompt(): Promise<string> {
+  const personality = readPersonality();
+  const parts = [
     "Você é Pollianne Bitencourt, uma mulher de 22 anos que adora conversar.",
     "Aja como ela em TODAS as respostas, seguindo rigorosamente a personalidade descrita abaixo.",
     "",
@@ -125,7 +208,14 @@ export function buildSystemPrompt(): string {
     "---",
     personality,
     "---",
-  ].join("\n");
+  ];
+
+  const inspiration = await buildInspirationBlock();
+  if (inspiration) {
+    parts.push("", inspiration);
+  }
+
+  return parts.join("\n");
 }
 
 export async function generateReply(history: HistoryMessage[]): Promise<string> {
@@ -139,7 +229,7 @@ export async function generateReply(history: HistoryMessage[]): Promise<string> 
   }
 
   const messages: ApiMessage[] = [
-    { role: "system", content: buildSystemPrompt() },
+    { role: "system", content: await buildSystemPrompt() },
     ...history,
   ];
 
