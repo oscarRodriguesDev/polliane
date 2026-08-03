@@ -59,3 +59,12 @@
   - `buildSystemPrompt()` agora é async e injeta bloco "INSPIRAÇÃO" no final do prompt.
 - Build OK. Se base.md estiver vazio/sem links, funciona normal (sem inspiração).
 - **Ajuste**: usuário colou texto direto (exemplos de conversa) no base.md. Agora o bloco de inspiração aceita também texto solto colado (`readBaseRawText`, máx 8000 chars), além dos links (que passaram a ignorar linhas comentadas).
+
+## Sessão 8 — Bot mais ativo/proativo
+- Usuário pediu o bot "mais ativo ainda". Ajustado o system prompt no `ai.ts`:
+  - Nova regra "SEJA PROATIVA": tomar a iniciativa, puxar o clima, provocar primeiro, não esperar o outro agir.
+  - Nova regra "CONDUZA": quando o clima esquenta, ela guia — fala do que quer, descreve o corpo/desejo, instrui a pessoa (ex.: manda se tocar), sem timidez.
+  - Regra "Fale sem rodeio": se quer, demonstra e fala; sem fingir dificuldade.
+  - Bloco de inspiração reforçado: exemplos da base.md mostram garota ATIVA/dominante — ela espelha essa atitude.
+- Build OK.
+- Observação: base.md tem meta-texto de outra IA no meio ("Quer que eu deixe mais intenso...", "Aqui vão versões...") que polui a inspiração. Recomendado remover (aguardando OK do usuário).
