@@ -30,6 +30,15 @@ export default function Chat() {
   // Inicia sempre dark (igual ao SSR) e corrige após o mount para evitar hydration mismatch.
   const [dark, setDark] = useState<boolean>(true);
   const endRef = useRef<HTMLDivElement | null>(null);
+  const inputRef = useRef<HTMLInputElement | null>(null);
+
+  // Mantém o foco na caixa de texto: no primeiro carregamento e sempre que o envio termina
+  // (loading volta a false), para não precisar clicar com o mouse pra digitar de novo.
+  useEffect(() => {
+    if (!loading) {
+      inputRef.current?.focus();
+    }
+  }, [loading]);
 
   // Lê a preferência salva ou do sistema uma única vez no mount.
   useEffect(() => {
@@ -277,6 +286,7 @@ export default function Chat() {
         className="relative z-10 flex items-center gap-2 border-t border-zinc-200/70 bg-white/60 px-4 py-3 backdrop-blur-md sm:gap-3 sm:px-6 sm:py-4 dark:border-zinc-800/70 dark:bg-zinc-900/40"
       >
         <input
+          ref={inputRef}
           type="text"
           value={input}
           onChange={(event) => setInput(event.target.value)}

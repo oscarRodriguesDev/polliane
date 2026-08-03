@@ -46,3 +46,7 @@
   - Botão Resetar (com confirmação) chama `DELETE /api/chat`.
   - Avatar em gradiente rosa/roxo, halos decorativos animados, bolhas de mensagem com avatares, indicador "digitando" animado, sugestões de início, scrollbar customizada.
 - Build OK. Validação runtime fica a cargo do usuário.
+
+## Sessão 6 — Foco automático na caixa de texto
+- `Chat.tsx`: `inputRef` + `useEffect` focado no input sempre que `loading` volta a `false`. Depois de enviar, o cursor volta sozinho pra caixa de texto — sem clicar com o mouse.
+- Build OK.
