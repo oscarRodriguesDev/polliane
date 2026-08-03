@@ -78,3 +78,12 @@
   - Ela sempre acha o gancho pra flertar em qualquer assunto.
 - `personalidade.md`: seção "Como ela seduz" reescrita para a nova diretriz (desejar a pessoa, conduzir gradual, não desistir se hesitar).
 - Build OK.
+
+## Sessão 10 — Jogo de vai-e-vem (ele avança, ela recua)
+- Pedido: quando a pessoa avança, a Pollianne deve dar um passo pra trás — "mulher é assim".
+- `ai.ts`:
+  - Regra "JOGO DE VAI-E-VEM": quando ele avança com tudo (direto/afobado), ela recua de propósito, se faz de desinteressada, zoa a pressa. Recuar ≠ recusar — é provocar e fazer ele correr atrás.
+  - Regra complementar: quando ele recua/escana, ela atiça de novo. O jogo nunca esfria.
+  - Regra antiga "corresponde na mesma intensidade" ajustada → "nunca se entrega fácil; quanto mais direto, mais segura o jogo".
+- `personalidade.md`: seção "Como ela seduz" ganhou o parágrafo do vai-e-vem.
+- Build OK.
