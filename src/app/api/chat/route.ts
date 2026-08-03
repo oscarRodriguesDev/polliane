@@ -1,20 +1,58 @@
 import { NextResponse } from "next/server";
-import {
-  addMessage,
-  getOrCreateConversation,
-  listMessages,
-} from "@/lib/db";
 import { generateReply, type HistoryMessage } from "@/lib/ai";
 
 export const runtime = "nodejs";
 
-// Conversa fixa e persistente (uma única conversa no app).
-const DEFAULT_CONVERSATION_ID = 1;
+// Conversa fixa e persistente em memória (SEM disco).
+// O histórico some quando o servidor reinicia — modo de teste da personalidade.
+const DEFAULT_CONVERSATION_ID = "1";
+
+type StoredMessage = {
+  id: number;
+  conversationId: string;
+  role: "user" | "assistant";
+  content: string;
+  createdAt: string;
+};
+
+// Store em memória: conversaId -> mensagens.
+const memoryStore = new Map<string, StoredMessage[]>();
+
+function getMessages(conversationId: string): StoredMessage[] {
+  if (!memoryStore.has(conversationId)) {
+    memoryStore.set(conversationId, []);
+  }
+  return memoryStore.get(conversationId)!;
+}
+
+function addMessage(
+  conversationId: string,
+  role: "user" | "assistant",
+  content: string
+): StoredMessage {
+  const messages = getMessages(conversationId);
+  const message: StoredMessage = {
+    id: messages.length + 1,
+    conversationId,
+    role,
+    content,
+    createdAt: new Date().toISOString(),
+  };
+  messages.push(message);
+  return message;
+}
 
 export async function GET(): Promise<NextResponse> {
-  const conversationId = getOrCreateConversation(DEFAULT_CONVERSATION_ID);
-  const messages = listMessages(conversationId);
-  return NextResponse.json({ messages });
+  return NextResponse.json({ messages: getMessages(DEFAULT_CONVERSATION_ID) });
+}
+
+// Reset: zera o histórico da conversa — o bot volta à estaca zero, sem memória.
+export async function DELETE(): Promise<NextResponse> {
+  memoryStore.set(DEFAULT_CONVERSATION_ID, []);
+  return NextResponse.json({
+    ok: true,
+    messages: getMessages(DEFAULT_CONVERSATION_ID),
+  });
 }
 
 export async function POST(request: Request): Promise<NextResponse> {
@@ -37,28 +75,26 @@ export async function POST(request: Request): Promise<NextResponse> {
     );
   }
 
-  const conversationId = getOrCreateConversation(DEFAULT_CONVERSATION_ID);
+  addMessage(DEFAULT_CONVERSATION_ID, "user", message);
 
-  addMessage(conversationId, "user", message);
-
-  const history: HistoryMessage[] = listMessages(conversationId).map((m) => ({
+  const history: HistoryMessage[] = getMessages(DEFAULT_CONVERSATION_ID).map((m) => ({
     role: m.role,
     content: m.content,
   }));
 
   try {
     const reply = await generateReply(history);
-    addMessage(conversationId, "assistant", reply);
+    addMessage(DEFAULT_CONVERSATION_ID, "assistant", reply);
   } catch (error) {
     console.error("Falha ao gerar resposta da IA:", error);
     return NextResponse.json(
       {
         error: "Não consegui responder agora. Tente novamente em instantes.",
-        messages: listMessages(conversationId),
+        messages: getMessages(DEFAULT_CONVERSATION_ID),
       },
       { status: 502 }
     );
   }
 
-  return NextResponse.json({ messages: listMessages(conversationId) });
+  return NextResponse.json({ messages: getMessages(DEFAULT_CONVERSATION_ID) });
 }

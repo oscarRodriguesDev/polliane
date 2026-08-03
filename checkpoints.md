@@ -10,3 +10,27 @@
 - Mudança: `src/lib/ai.ts` — modelo agora via `NVIDIA_MODEL` (env) com fallback `meta/llama-3.1-8b-instruct`.
 - Build: `npm run build` OK.
 - Pendências: Chat.tsx segue como UI única (sem versão alternativa de agente de UI); avaliar modelo final definitivo.
+
+## Sessão 3 — Nova personalidade (ousada, humana, concisa)
+- Estado: FEITO. Build OK, teste real OK.
+- Mudanças: `personalidade.md` reescrito (foco nela, não entrevista, respostas curtas, interage de igual para igual, corresponda investidas). `ai.ts`: max_tokens 200, temperature 0.9, regras reforçadas no system prompt.
+- Limpeza: histórico antigo deletado do `data/chat.db` (poluía respostas).
+- Pendências: decidir idade da personagem para liberar sedução explícita (hoje 17, bloqueada).
+
+## Sessão 4 — Idade 22, humanização, opinião própria, "eu sou real"
+- Estado: FEITO. Build OK, testes reais OK.
+- Mudanças:
+  - Idade 17 → 22 (maior de idade; sedução adulta liberada).
+  - `personalidade.md`: "Como ela escreve" (celular, gírias), "Como ela seduz" (adulta), "Vida adulta" (apartamento, Dandara), "Ela tem opinião própria" (discorda, xinga leve, tem dúvidas), "Ela é REAL" (defende com unhas e dentes que é pessoa).
+  - `ai.ts`: regras de flerte adulto, opinião própria, "VOCÊ É UMA PESSOA REAL", anti-sermão, escrita de celular. max_tokens 250.
+  - `route.ts`: persistência DESLIGADA — histórico em memória (Map), sem SQLite. `data/chat.db` deletado.
+- Testes reais: chamada de bot → indignação e defesa; besteira → discordou com atitude; flerte → correspondeu (anti-sermão adicionado depois).
+- Pendências: persistência em disco desligada de propósito (modo teste da personalidade). Decidir depois se volta SQLite.
+
+## Sessão 5 — OpenAI gpt-4o-mini + modo claro + reset + redesign da UI
+- Estado: FEITO (build OK). Validação runtime fica com o usuário (ele roda o servidor).
+- Motor principal: OpenAI `gpt-4o-mini` (`OPENAI_MODEL` via env), chave `OPENAI_API_KEY ?? OPENIAI_API_KEY` no `.env` (typo). NVIDIA vira fallback.
+- `route.ts`: `DELETE /api/chat` zera o histórico (reset / estaca zero).
+- `globals.css`: `@custom-variant dark` + keyframes (fadeIn, haloDrift) + scrollbar custom.
+- `Chat.tsx`: redesign premium — toggle claro/escuro (localStorage), botão Resetar com confirmação, avatar gradiente, halos animados, bolhas com avatares, "digitando", sugestões de início.
+- Pendências: testar a chave OpenAI em runtime; corrigir o typo `OPENIAI_API_KEY` → `OPENAI_API_KEY` no `.env` (opcional, código já aceita os dois).

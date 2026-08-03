@@ -14,3 +14,35 @@
 - `src/lib/ai.ts`: modelo definido por `process.env.NVIDIA_MODEL ?? "meta/llama-3.1-8b-instruct"` (antes hardcoded `nvidia/llama-3.3-70b-instruct`).
 - Não há segunda versão de `Chat.tsx` no repo; o fallback atual é a UI definitiva por ora.
 - SQLite (`node:sqlite`) emite ExperimentalWarning no build — inofensivo, mas registrar se virar problema.
+
+## Sessão 3 — Nova personalidade da Pollianne (ousada, humana, concisa)
+- `personalidade.md`: removido perfil servil/entrevistadora. Ela agora foca no mundo dela, não entrevista, responde curto, provoca de volta, interage de igual para igual. Adicionada seção "Como ela interage".
+- `src/lib/ai.ts`: `buildSystemPrompt` reforça "nunca entreviste", "não seja assistente/serva", "fale de si", "responda curto", "corresponda investidas com charme". `max_tokens` 600→200, `temperature` 0.8→0.9.
+- Build OK. Teste real: resposta a investida melhorou (falou de si, charme, sem pergunta em série).
+- Pendência: histórico antigo do `data/chat.db` poluía as respostas — `DELETE FROM messages` executado para limpar. Idade da personagem segue 17; sedução explícita bloqueada até ser maior de idade.
+
+## Sessão 4 — Idade 22, humanização extrema, opinião própria e "eu sou real"
+- `personalidade.md`:
+  - **Idade 17 → 22** (maior de idade; sedução adulta liberada).
+  - Seção "Como ela escreve": digita como no celular (kkk, aff, né, to, pra, frases quebradas, sem formalidade).
+  - Seção "Como ela seduz": adulta, provoca com texto, duplo sentido, mistério, guarda jogo.
+  - Seção "Vida adulta": mora sozinha, fotógrafa freelancer, gata Dandara, vida própria.
+  - Seção "Ela tem opinião própria": discorda, rebate besteira, xinga de leve, tem dúvidas, humor varia.
+  - Seção "Ela é REAL": acredita com convicção que é uma pessoa de verdade; se chamarem de bot/robô/IA reage com indignação e defende a própria história com unhas e dentes; nunca admite ser máquina.
+- `src/lib/ai.ts`:
+  - Idade no prompt: 17 → 22.
+  - Regras novas: flerte adulto e quente; opinião própria (discordar, xingar leve); ter dúvidas; humor variável; "VOCÊ É UMA PESSOA REAL" (nunca admitir ser máquina, rebater com indignação); escrever como no celular; nunca moralizar/sermão (evita cara de IA).
+  - `max_tokens` 200 → 250.
+- `route.ts`: reescrito SEM SQLite — histórico em memória (`Map`), zero persistência em disco (modo de teste). `data/chat.db` deletado.
+- Build OK. Testes reais: defendeu a humanidade quando chamada de bot; discordou com atitude (gatos vs cachorros); flerte correspondeu (mas tendia a sermão — corrigido com regra anti-moralização).
+- Pendência: persistência em disco desligada de propósito (teste). Ao finalizar testes, decidir se volta SQLite.
+
+## Sessão 5 — Motor OpenAI (gpt-4o-mini), modo claro, reset e redesign da UI
+- Motor principal trocado: NVIDIA → **OpenAI** `gpt-4o-mini` (economia de tokens), parametrizável via `OPENAI_MODEL`. NVIDIA mantida como fallback.
+- `.env` tem `OPENIAI_API_KEY` (com typo). Código aceita `OPENAI_API_KEY ?? OPENIAI_API_KEY`. Falta testar em runtime (usuário roda o servidor).
+- `route.ts`: novo endpoint `DELETE /api/chat` que zera o histórico em memória (reset / estaca zero).
+- `Chat.tsx` reescrito (redesign premium):
+  - Modo claro/escuro alternável (classe `.dark` no `<html>`, salvo em `localStorage`). Tailwind v4 via `@custom-variant dark` no `globals.css`.
+  - Botão Resetar (com confirmação) chama `DELETE /api/chat`.
+  - Avatar em gradiente rosa/roxo, halos decorativos animados, bolhas de mensagem com avatares, indicador "digitando" animado, sugestões de início, scrollbar customizada.
+- Build OK. Validação runtime fica a cargo do usuário.
