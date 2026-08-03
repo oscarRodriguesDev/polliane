@@ -18,7 +18,8 @@ type ChatCompletionResponse = {
 };
 
 const NVIDIA_URL = "https://integrate.api.nvidia.com/v1/chat/completions";
-const NVIDIA_MODEL = "nvidia/llama-3.3-70b-instruct";
+// Modelo parametrizável via env, com fallback estável.
+const NVIDIA_MODEL = process.env.NVIDIA_MODEL ?? "meta/llama-3.1-8b-instruct";
 
 function readPersonality(): string {
   const filePath = path.join(process.cwd(), "personalidade.md");
