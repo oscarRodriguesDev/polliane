@@ -67,3 +67,15 @@
 - Estado: FEITO. Build OK.
 - Mudanças: `src/lib/image.ts` (novo), `src/app/api/image/route.ts` (novo, POST /api/image), `ai.ts` (regra FOTO SOB DEMANDA + tag `[[FOTO: cena]]`), `chat/route.ts` (resolvePhotoTag → imageUrl), `Chat.tsx` (renderiza <img>).
 - Pendência: `public/polli` VAZIA — usuário precisa colocar as fotos de referência. Validação runtime com o usuário.
+
+## Sessão 19 — Imagens via busca (Unsplash) + proxy + clique pra abrir
+- Estado: FEITO. Build OK.
+- Motivo: OpenRouter sem créditos (402) e NVIDIA sem acesso a modelos de imagem. Troquei geração paga por **busca de imagem parecida no Unsplash** (sem chave).
+- Mudanças: `src/lib/image.ts` (busca Unsplash + buildQuery PT→EN), `src/app/api/img/route.ts` (novo proxy anti-CORS), `Chat.tsx` (imagem inline + clicável + selo "abrir").
+- Pendência: validar em runtime com o usuário (pedir foto no chat).
+
+## Sessão 20 — Fotos +18/sensuais
+- Estado: FEITO. Build OK.
+- Mudanças: `image.ts` (buildQuery com termos sensuais + cores + stopwords), `ai.ts` (regra FOTO SENSIAL).
+- Limite real: Unsplash cobre sensual/lingerie, mas sem nudez explícita. Para +18 explícito: créditos OpenRouter (geração) ou fonte própria. Decisão do usuário.
+- Teste real OK (lingerie meia-luz → imagem).

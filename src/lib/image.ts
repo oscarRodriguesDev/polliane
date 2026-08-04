@@ -1,101 +1,125 @@
-import { readFileSync, readdirSync } from "node:fs";
-import path from "node:path";
-import { writeFile, mkdir } from "node:fs/promises";
-
 /**
- * Motor de geração de imagem via OpenRouter (não usa OpenAI).
+ * Busca de imagem "parecida" para a Pollianne — sem geração paga.
  *
- * Usa as fotos de referência em `public/polli` para manter a aparência da
- * Pollianne consistente (img2img via input_references). O modelo padrão é o
- * FLUX.2-max (black-forest), que aceita até 8 referências.
+ * Em vez de gerar a imagem (que exigia créditos no OpenRouter), busca uma foto
+ * de banco de imagens (Unsplash) cuja cena combine com a descrição. Retorna o
+ * link público da imagem para exibir no chat.
+ *
+ * Fontes: Unsplash (grátis, sem chave). Google Imagens e DuckDuckGo bloqueiam
+ * scraping sem JS, então não são usados.
  */
 
-const OPENROUTER_IMAGES_URL = "https://openrouter.ai/api/v1/images";
-const IMAGE_MODEL = process.env.OPENROUTER_IMAGE_MODEL ?? "black-forest-labs/flux.2-max";
+// Stopwords do PT que não ajudam na busca (e também as equivalentes em EN).
+const STOPWORDS = new Set([
+  "de", "da", "do", "das", "dos", "na", "no", "nas", "nos", "em", "com", "para", "por",
+  "uma", "um", "uns", "umas", "ela", "eu", "to", "ta", "tô", "tá", "que", "o", "a",
+  "and", "the", "with", "in", "on", "at", "a", "an", "of",
+]);
 
-// Pasta com as fotos de referência da Pollianne.
-function referenceDir(): string {
-  return path.join(process.cwd(), "public", "polli");
+// Remove termos que não ajudam na busca e monta a query.
+function buildQuery(prompt: string): string {
+  const map: Record<string, string> = {
+    gata: "cat",
+    gato: "cat",
+    cachorro: "dog",
+    cão: "dog",
+    cães: "dogs",
+    mulher: "woman",
+    menina: "woman",
+    garota: "woman",
+    "no colo": "on lap",
+    brincando: "playing",
+    deitada: "lying",
+    deitado: "lying",
+    "de pé": "standing",
+    sorrindo: "smiling",
+    praia: "beach",
+    cidade: "city",
+    café: "coffee",
+    cozinha: "kitchen",
+    quarto: "bedroom",
+    sofá: "sofa",
+    dormindo: "sleeping",
+    foto: "portrait",
+    retrato: "portrait",
+    fotógrafa: "photographer",
+    camera: "camera",
+    // Sensual / moda — coberto pelo banco editorial do Unsplash.
+    sensual: "sensual",
+    sedutor: "seductive",
+    sedutora: "seductive",
+    lingerie: "lingerie",
+    calcinha: "lingerie",
+    sutiã: "lingerie",
+    biquini: "bikini",
+    "roupa de banho": "swimwear",
+    "sem roupa": "nude",
+    nua: "nude",
+    nu: "nude",
+    nudez: "nude",
+    seios: "cleavage",
+    peitos: "cleavage",
+    decote: "cleavage",
+    bunda: "curves",
+    quadril: "curves",
+    corpo: "body",
+    pele: "skin",
+    "meia-luz": "dim light",
+    "luz baixa": "low light",
+    banho: "shower",
+    cama: "bed",
+    "de lingerie": "lingerie",
+    provocante: "provocative",
+    colchão: "bed",
+    "roupa minima": "minimal clothing",
+    "só de calcinha": "lingerie",
+    "só de sutiã": "lingerie",
+    despindo: "undressing",
+    "tirando a roupa": "undressing",
+    toalha: "towel",
+    // Cores comuns.
+    preta: "black",
+    preto: "black",
+    branca: "white",
+    branco: "white",
+    vermelha: "red",
+    vermelho: "red",
+    rosa: "pink",
+    azul: "blue",
+  };
+  const words = prompt.toLowerCase().split(/[^a-zà-ú]+/).filter(Boolean);
+  const mapped = words
+    .filter((w) => !STOPWORDS.has(w))
+    .map((w) => map[w] ?? w)
+    .filter((w) => !STOPWORDS.has(w));
+  return mapped.join(" ").slice(0, 120);
 }
 
-const ALLOWED_EXT = [".jpg", ".jpeg", ".png", ".webp", ".gif"];
-
-// Converte cada foto em base64 data URL para passar como referência (máx 8, como o FLUX.2-max suporta).
-function listReferenceImages(): string[] {
-  try {
-    const entries = readdirSync(referenceDir());
-    const urls: string[] = [];
-    for (const file of entries) {
-      const ext = path.extname(file).toLowerCase();
-      if (!ALLOWED_EXT.includes(ext)) continue;
-      const full = path.join(referenceDir(), file);
-      const buf = readFileSync(full);
-      const dataUrl = `data:image/${ext.slice(1)};base64,${buf.toString("base64")}`;
-      urls.push(dataUrl);
-      if (urls.length >= 8) break;
-    }
-    return urls;
-  } catch {
-    return [];
+async function fetchUnsplash(query: string): Promise<string> {
+  const url =
+    "https://unsplash.com/napi/search/photos?query=" +
+    encodeURIComponent(query) +
+    "&per_page=3";
+  // Sem User-Agent: o Unsplash devolve 401 quando recebe UA de navegador.
+  const res = await fetch(url);
+  if (!res.ok) {
+    throw new Error(`Unsplash respondeu ${res.status}`);
   }
+  const data = (await res.json()) as { results?: Array<{ urls: { regular?: string } }> };
+  const photo = data.results?.[0];
+  if (!photo?.urls.regular) {
+    throw new Error("Nenhuma imagem encontrada para essa cena.");
+  }
+  return photo.urls.regular;
 }
 
-function getKey(): string {
-  return process.env.OPENROUTER_API_KEY ?? process.env.OPENROUTER_API ?? "";
-}
-
+// Gera a URL da imagem "parecida" com a cena descrita.
+// Devolve um caminho local via proxy (/api/img) pra imagem carregar sem CORS.
 export async function generateImage(
   prompt: string,
-  opts?: { aspectRatio?: string; quality?: string }
+  _opts?: { aspectRatio?: string; quality?: string }
 ): Promise<string> {
-  const key = getKey();
-  if (!key) {
-    throw new Error("Chave do OpenRouter não configurada (OPENROUTER_API_KEY ou OPENROUTER_API).");
-  }
-
-  const references = listReferenceImages();
-  if (references.length === 0) {
-    throw new Error(
-      "Nenhuma foto de referência em public/polli. Adicione fotos da Pollíanne para gerar imagens."
-    );
-  }
-
-  const response = await fetch(OPENROUTER_IMAGES_URL, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${key}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: IMAGE_MODEL,
-      prompt,
-      aspect_ratio: opts?.aspectRatio ?? "1:1",
-      quality: opts?.quality ?? "high",
-      output_format: "png",
-      input_references: references.map((url) => ({
-        type: "image_url",
-        image_url: { url },
-      })),
-    }),
-  });
-
-  if (!response.ok) {
-    const text = await response.text();
-    throw new Error(`Falha na geração de imagem (${response.status}): ${text.slice(0, 500)}`);
-  }
-
-  const data = (await response.json()) as { data?: Array<{ b64_json?: string }> };
-  const b64 = data.data?.[0]?.b64_json;
-  if (!b64) {
-    throw new Error("OpenRouter retornou sem imagem.");
-  }
-
-  // Salva a imagem gerada em public/generated/ e devolve o caminho público.
-  const buf = Buffer.from(b64, "base64");
-  const outDir = path.join(process.cwd(), "public", "generated");
-  await mkdir(outDir, { recursive: true });
-  const filename = `polli-gen-${Date.now()}.png`;
-  await writeFile(path.join(outDir, filename), buf);
-
-  return `/generated/${filename}`;
+  const query = buildQuery(prompt);
+  const remote = await fetchUnsplash(query);
+  return `/api/img?u=${encodeURIComponent(remote)}`;
 }

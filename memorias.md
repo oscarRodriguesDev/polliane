@@ -136,7 +136,22 @@
 - ⚠️ IMPORTANTE: modelo principal é `gpt-4o-mini` (OpenAI) — moderação embutida pode bloquear palavrão/sexo explícito MESMO com prompt certo. Se o teste real continuar travado, trocar para o fallback NVIDIA (`deepseek-v4-flash`, bem menos travado) via env `OPENAI_MODEL`/remoção da chave OpenAI. Pendente de decisão do usuário.
 - Build OK.
 
-## Sessão 18 — Geração de imagens da Pollianne (OpenRouter, sem OpenAI)
+## Sessão 19 — Imagens via busca (Unsplash) + proxy + clique pra abrir
+- Problema: geração paga falhou (OpenRouter sem créditos, erro 402) e a chave NVIDIA não tem acesso a modelos de imagem.
+- Decisão do usuário: em vez de gerar, **buscar um link de imagem parecida** com a cena.
+- `src/lib/image.ts` reescrito: busca no Unsplash (`unsplash.com/napi/search/photos`) sem chave, com `buildQuery` que traduz PT→EN (gata=cat, brincando=playing, etc.). Devolve `/api/img?u=<url>` (via proxy local).
+  - Descobertas: Google Imagens e DuckDuckGo bloqueiam scraping (0 resultados); Unsplash **retorna 401 se mandar User-Agent de navegador** — por isso o fetch vai sem UA.
+- Criado `src/app/api/img/route.ts`: proxy que baixa a imagem remota e repassa (bypass de CORS/hotlink), com cache de 1 dia.
+- `Chat.tsx`: imagem inline no chat + **clicável** (abre em nova aba) + selo "abrir".
+- Build OK. Teste real do motor: OK (retorna link via proxy).
+
+## Sessão 20 — Fotos +18/sensuais
+- Pedido: a Pollianne pode e deve mandar fotos mais quentes quando o clima esquentar.
+- `image.ts`: `buildQuery` ganhou mapa PT→EN de termos sensuais (lingerie, seductive, nude, cleavage, curves, body, skin, low light, undressing...) + cores (preta=black...) + filtro de STOPWORDS do PT/EN (a query saía poluída e o Unsplash retornava vazio).
+- `ai.ts`: regra nova "FOTO SENSIAL" — quando o clima esquentar, a Pollianne usa a mesma tag `[[FOTO: cena sensual]]` sem timidez (lingerie, pose, meia-luz).
+- Teste real OK: "mulher de lingerie preta deitada na cama meia-luz" → retornou imagem via proxy.
+- ⚠️ LIMITE REAL: a fonte é o Unsplash (banco editorial de moda, grátis) — cobre sensual/lingerie/semi-nu, mas NÃO tem nudez/pornografia explícita. Para +18 explícito de verdade: comprar créditos no OpenRouter e voltar à geração por IA (flux.2-max), ou indicar uma fonte de imagens +18 com API/scraping. Decisão do usuário.
+- Build OK.
 - Pedido: gerar fotos da Pollianne em vários contextos usando as fotos de referência que o usuário vai colocar em `public/polli`; foto entra no chat quando o usuário pedir.
 - Criado `src/lib/image.ts`: gera imagem via OpenRouter `POST /api/v1/images` (endpoint dedicado, NÃO usa OpenAI). Modelo default `black-forest-labs/flux.2-max` (env `OPENROUTER_IMAGE_MODEL`). Lê fotos de `public/polli` (máx 8, jpg/png/webp/gif), converte pra base64 e manda como `input_references` (img2img → rosto consistente). Salva o resultado em `public/generated/polli-gen-<ts>.png` e devolve URL pública.
 - Criado `src/app/api/image/route.ts`: POST `/api/image` com `{ prompt, aspectRatio?, quality? }` → `{ url }`.

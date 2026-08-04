@@ -311,12 +311,27 @@ export default function Chat() {
               >
                 {message.content}
                 {message.imageUrl && (
-                  <div className="flex justify-center pt-2">
-                    <img
-                      src={message.imageUrl}
-                      alt="Foto da Pollianne"
-                      className="max-h-72 w-auto max-w-full rounded-2xl border border-zinc-200/70 object-cover shadow-md dark:border-zinc-700/50"
-                    />
+                  <div className="relative flex justify-center pt-2">
+                    <a
+                      href={message.imageUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      title="Abrir foto em tamanho maior"
+                    >
+                      <img
+                        src={message.imageUrl}
+                        alt="Foto da Pollianne"
+                        className="max-h-72 w-auto max-w-full cursor-pointer rounded-2xl border border-zinc-200/70 object-cover shadow-md transition-transform hover:scale-[1.02] dark:border-zinc-700/50"
+                      />
+                    </a>
+                    <span className="absolute bottom-2 right-2 flex items-center gap-1 rounded-full bg-zinc-900/60 px-2 py-1 text-[10px] font-medium text-white backdrop-blur-sm">
+                      <svg viewBox="0 0 24 24" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M15 3h6v6" />
+                        <path d="M10 14 21 3" />
+                        <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                      </svg>
+                      abrir
+                    </span>
                   </div>
                 )}
               </div>
