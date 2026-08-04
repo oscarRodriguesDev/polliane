@@ -115,11 +115,13 @@ async function fetchUnsplash(query: string): Promise<string> {
 
 // Gera a URL da imagem "parecida" com a cena descrita.
 // Devolve um caminho local via proxy (/api/img) pra imagem carregar sem CORS.
+// Com `remote: true`, devolve a URL pública do Unsplash — útil pra serviços
+// externos (Telegram, bots) que não têm acesso ao nosso proxy.
 export async function generateImage(
   prompt: string,
-  _opts?: { aspectRatio?: string; quality?: string }
+  opts?: { aspectRatio?: string; quality?: string; remote?: boolean }
 ): Promise<string> {
   const query = buildQuery(prompt);
   const remote = await fetchUnsplash(query);
-  return `/api/img?u=${encodeURIComponent(remote)}`;
+  return opts?.remote ? remote : `/api/img?u=${encodeURIComponent(remote)}`;
 }

@@ -63,7 +63,8 @@ function temperamentColor(temp: string): string {
 export default function MoodPanel() {
   const [state, setState] = useState<StateData | null>(null);
   const [isDev, setIsDev] = useState(false);
-  const [collapsed, setCollapsed] = useState(false);
+  // Recolhido por padrão pra nunca tampar a conversa — clique pra abrir.
+  const [collapsed, setCollapsed] = useState(true);
 
   // Só mostra o painel quando rodando em localhost (modo dev).
   useEffect(() => {
@@ -103,7 +104,7 @@ export default function MoodPanel() {
   if (!isDev) return null;
 
   return (
-    <div className="fixed bottom-4 left-4 z-50 w-64 rounded-2xl border border-zinc-200/80 bg-white/90 p-3 shadow-xl backdrop-blur-md dark:border-zinc-800/80 dark:bg-zinc-900/90">
+    <div className="fixed right-4 top-20 z-50 w-64 rounded-2xl border border-zinc-200/80 bg-white/90 p-3 shadow-xl backdrop-blur-md dark:border-zinc-800/80 dark:bg-zinc-900/90">
       <div className="mb-2 flex items-center justify-between gap-2">
         <div className="flex items-center gap-1.5">
           <span className="relative flex h-2 w-2">

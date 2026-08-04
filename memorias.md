@@ -203,3 +203,13 @@
 - `Chat.tsx`: botão toggle no header (ícone `<>`), com tooltip "OpenAI natural / DeepSeek picante"; estado persistido em `localStorage("provider")`; enviado no POST.
 - ⚠️ `.env` só tem `KEY_NVIDIA` — sem chave OpenAI. Enquanto isso os dois toggles caem no mesmo motor NVIDIA (DeepSeek primeiro). Pra valer a diferença, adicionar `OPENAI_API_KEY` (ou `OPENIAI_API_KEY`) ao `.env`.
 - Build OK.
+
+## Sessão 23 — Bot no Telegram (webhook reutilizando a engine do chat)
+- Ajuste: `MoodPanel` movido pro canto **superior direito** (`fixed right-4 top-20`) e passou a iniciar **recolhido** (`collapsed = true`) — não tapava mais a caixa de digitação.
+- Criado `src/lib/telegram.ts`: engine reusa `generateReply`, `applyEmotionChange`, e `generateImage` (com fotos remotas). Histórico por **chat_id do Telegram** (`memoryStore: Map<number, StoredMessage[]>`). Funções: `sendText`, `sendPhoto`, `setWebhook`, `deleteWebhook`, `getWebhookInfo`, `handleTelegramUpdate`. Handler aceita `/start`, `/reset`, `/estado` (usa `TEMPERAMENT_INFO`).
+- Criado `src/app/api/telegram/route.ts`: `POST` processa updates (sempre responde 200); `GET ?set=<url>` registra webhook, `?delete=1` remove, `?info=1` mostra status.
+- `image.ts`: `generateImage(prompt, { remote?: boolean })` — quando `remote: true` devolve a URL pública do Unsplash (proxy `/api/img` era inacessível pra Telegram, que baixa a foto direto).
+- `.env`: adicionada chave `TELEGRAM_BOT_TOKEN=` (vazia, usuário preenche).
+- Criado `docs/telegram.md`: tutorial de configuração (BotFather → token → webhook com ngrok → testes → comandos → troubleshooting).
+- Build OK; rota `/api/telegram` registrada.
+- ⚠️ Pendências: token do bot precisa ser preenchido; mensagens/fotos enviadas via sendMessage/sendPhoto sem limite de tamanho (cuidado com respostas muito longas).
