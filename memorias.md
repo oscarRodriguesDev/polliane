@@ -135,3 +135,11 @@
 - `personalidade.md`: "Como ela escreve" (palavrão natural, sem tom de atendente) e "Como ela seduz" (sexo aberto e explícito sem eufemismo).
 - ⚠️ IMPORTANTE: modelo principal é `gpt-4o-mini` (OpenAI) — moderação embutida pode bloquear palavrão/sexo explícito MESMO com prompt certo. Se o teste real continuar travado, trocar para o fallback NVIDIA (`deepseek-v4-flash`, bem menos travado) via env `OPENAI_MODEL`/remoção da chave OpenAI. Pendente de decisão do usuário.
 - Build OK.
+
+## Sessão 16 — Botão de troca OpenAI ↔ DeepSeek no chat
+- Pedido: botão no chat pra trocar entre OpenAI e DeepSeek (natural vs picante).
+- `ai.ts`: `Provider = "openai" | "deepseek"`. `generateReply(history, provider)` refatorado em `tryOpenAI`/`tryNvidia`. Modo **deepseek** tenta NVIDIA primeiro (menos travas, mais picante); modo **openai** tenta OpenAI primeiro. O outro vira fallback — nunca fica sem responder.
+- `route.ts`: POST aceita `provider` no body e repassa ao `generateReply`.
+- `Chat.tsx`: botão toggle no header (ícone `<>`), com tooltip "OpenAI natural / DeepSeek picante"; estado persistido em `localStorage("provider")`; enviado no POST.
+- ⚠️ `.env` só tem `KEY_NVIDIA` — sem chave OpenAI. Enquanto isso os dois toggles caem no mesmo motor NVIDIA (DeepSeek primeiro). Pra valer a diferença, adicionar `OPENAI_API_KEY` (ou `OPENIAI_API_KEY`) ao `.env`.
+- Build OK.

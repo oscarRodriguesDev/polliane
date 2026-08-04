@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { generateReply, type HistoryMessage } from "@/lib/ai";
+import { generateReply, type HistoryMessage, type Provider } from "@/lib/ai";
 
 export const runtime = "nodejs";
 
@@ -56,10 +56,10 @@ export async function DELETE(): Promise<NextResponse> {
 }
 
 export async function POST(request: Request): Promise<NextResponse> {
-  let body: { message?: unknown };
+  let body: { message?: unknown; provider?: unknown };
 
   try {
-    body = (await request.json()) as { message?: unknown };
+    body = (await request.json()) as { message?: unknown; provider?: unknown };
   } catch {
     return NextResponse.json(
       { error: "Corpo da requisição inválido. Envie JSON com o campo 'message'." },
@@ -75,6 +75,8 @@ export async function POST(request: Request): Promise<NextResponse> {
     );
   }
 
+  const provider: Provider = body.provider === "deepseek" ? "deepseek" : "openai";
+
   addMessage(DEFAULT_CONVERSATION_ID, "user", message);
 
   const history: HistoryMessage[] = getMessages(DEFAULT_CONVERSATION_ID).map((m) => ({
@@ -83,7 +85,7 @@ export async function POST(request: Request): Promise<NextResponse> {
   }));
 
   try {
-    const reply = await generateReply(history);
+    const reply = await generateReply(history, provider);
     addMessage(DEFAULT_CONVERSATION_ID, "assistant", reply);
   } catch (error) {
     console.error("Falha ao gerar resposta da IA:", error);

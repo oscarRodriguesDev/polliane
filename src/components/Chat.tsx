@@ -15,6 +15,8 @@ type ChatResponse = {
   error?: string;
 };
 
+type Provider = "openai" | "deepseek";
+
 const SUGGESTIONS = [
   "Ei, conta uma coisa engraçada do teu dia",
   "Fala de ti, como é teu apartamento?",
@@ -29,6 +31,8 @@ export default function Chat() {
   const [error, setError] = useState<string | null>(null);
   // Inicia sempre dark (igual ao SSR) e corrige após o mount para evitar hydration mismatch.
   const [dark, setDark] = useState<boolean>(true);
+  // Provedor de IA: "openai" (gpt-4o-mini, mais moderado) ou "deepseek" (sem travas, mais picante).
+  const [provider, setProvider] = useState<Provider>("openai");
   const endRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
@@ -50,6 +54,20 @@ export default function Chat() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Lê o provedor salvo no mount.
+  useEffect(() => {
+    const saved = localStorage.getItem("provider");
+    if (saved === "deepseek" || saved === "openai") {
+      setProvider(saved);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Persiste a escolha de provedor.
+  useEffect(() => {
+    localStorage.setItem("provider", provider);
+  }, [provider]);
 
   // Aplica/remove a classe .dark no <html> conforme o tema escolhido.
   useEffect(() => {
@@ -89,7 +107,7 @@ export default function Chat() {
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: content }),
+        body: JSON.stringify({ message: content, provider }),
       });
 
       const data = (await res.json()) as ChatResponse;
@@ -160,6 +178,35 @@ export default function Chat() {
         </div>
 
         <div className="flex shrink-0 items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => setProvider((prev) => (prev === "openai" ? "deepseek" : "openai"))}
+            title={
+              provider === "openai"
+                ? "OpenAI: respostas naturais e moderadas. Clique para trocar pro DeepSeek (picante)."
+                : "DeepSeek: sem travas, mais picante. Clique para trocar pro OpenAI (natural)."
+            }
+            className={
+              "flex h-9 items-center gap-1.5 rounded-full px-3 text-xs font-semibold transition-colors sm:px-3.5 " +
+              (provider === "deepseek"
+                ? "bg-gradient-to-r from-fuchsia-500/15 to-violet-500/15 text-fuchsia-600 ring-1 ring-fuchsia-400/40 hover:bg-fuchsia-500/20 dark:text-fuchsia-400 dark:ring-fuchsia-500/40"
+                : "bg-zinc-100 text-zinc-600 ring-1 ring-zinc-300/70 hover:bg-zinc-200/70 dark:bg-zinc-900 dark:text-zinc-300 dark:ring-zinc-700")
+            }
+          >
+            <span
+              className={
+                "h-1.5 w-1.5 rounded-full " +
+                (provider === "deepseek" ? "bg-fuchsia-500" : "bg-zinc-400 dark:bg-zinc-500")
+              }
+            />
+            <span className="hidden sm:inline">
+              {provider === "deepseek" ? "DeepSeek" : "OpenAI"}
+            </span>
+            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+              <path d="M8 9l-4 4 4 4" />
+              <path d="M16 9l4 4-4 4" />
+            </svg>
+          </button>
           <button
             type="button"
             onClick={() => setDark((prev) => !prev)}

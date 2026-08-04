@@ -273,7 +273,90 @@ export async function buildSystemPrompt(): Promise<string> {
   return parts.join("\n");
 }
 
-export async function generateReply(history: HistoryMessage[]): Promise<string> {
+// Provedor escolhido pela pessoa no chat.
+// "openai" = gpt-4o-mini (mais moderado/natural). "deepseek" = deepseek-v4-flash via NVIDIA (bem menos travado, mais picante).
+export type Provider = "openai" | "deepseek";
+
+async function tryOpenAI(
+  openaiKey: string,
+  messages: ApiMessage[],
+  errors: string[]
+): Promise<string | null> {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const { content, status } = await callOpenAI(openaiKey, OPENAI_MODEL, messages);
+
+      if (status === 200 && content) {
+        return content;
+      }
+
+      if (status === 429) {
+        // Rate limit: espera e tenta de novo.
+        errors.push(`openai ${OPENAI_MODEL}: status ${status} (tentativa ${attempt + 1})`);
+        await sleep(1500 * (attempt + 1));
+        continue;
+      }
+
+      // 401 (chave inválida), 404 (modelo inexistente), 500 etc.: pula para o fallback.
+      errors.push(`openai ${OPENAI_MODEL}: status ${status} sem conteúdo`);
+      break;
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      errors.push(`openai ${OPENAI_MODEL}: falha de rede (${detail})`);
+      await sleep(1000);
+      break;
+    }
+  }
+  return null;
+}
+
+async function tryNvidia(
+  nvidiaKey: string,
+  messages: ApiMessage[],
+  errors: string[]
+): Promise<string | null> {
+  const models = [NVIDIA_MODEL, ...FALLBACK_MODELS.filter((m) => m !== NVIDIA_MODEL)];
+
+  for (const model of models) {
+    // Retry de até 2x para sobrecarga (529) e rate limit (429).
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const { content, status } = await callModel(nvidiaKey, model, messages);
+
+        if (status === 200 && content) {
+          return content;
+        }
+
+        if (status === 529 || status === 429) {
+          // Sobrecarga/rate limit: espera e tenta de novo no mesmo modelo.
+          errors.push(`nvidia ${model}: status ${status} (tentativa ${attempt + 1})`);
+          await sleep(1500 * (attempt + 1));
+          continue;
+        }
+
+        if (status === 404 || status === 401) {
+          // Modelo indisponível para a conta ou chave inválida: pula para o próximo.
+          errors.push(`nvidia ${model}: status ${status}`);
+          break;
+        }
+
+        errors.push(`nvidia ${model}: status ${status} sem conteúdo`);
+        break;
+      } catch (error) {
+        const detail = error instanceof Error ? error.message : String(error);
+        errors.push(`nvidia ${model}: falha de rede (${detail})`);
+        await sleep(1000);
+        break;
+      }
+    }
+  }
+  return null;
+}
+
+export async function generateReply(
+  history: HistoryMessage[],
+  provider: Provider = "openai"
+): Promise<string> {
   const openaiKey = process.env.OPENAI_API_KEY ?? process.env.OPENIAI_API_KEY;
   const nvidiaKey = process.env.KEY_NVIDIA;
 
@@ -290,72 +373,18 @@ export async function generateReply(history: HistoryMessage[]): Promise<string> 
 
   const errors: string[] = [];
 
-  // Motor principal: OpenAI (gpt-4o-mini) — mais barato.
-  if (openaiKey) {
-    for (let attempt = 0; attempt < 3; attempt++) {
-      try {
-        const { content, status } = await callOpenAI(openaiKey, OPENAI_MODEL, messages);
-
-        if (status === 200 && content) {
-          return content;
-        }
-
-        if (status === 429) {
-          // Rate limit: espera e tenta de novo.
-          errors.push(`openai ${OPENAI_MODEL}: status ${status} (tentativa ${attempt + 1})`);
-          await sleep(1500 * (attempt + 1));
-          continue;
-        }
-
-        // 401 (chave inválida), 404 (modelo inexistente), 500 etc.: pula para o fallback.
-        errors.push(`openai ${OPENAI_MODEL}: status ${status} sem conteúdo`);
-        break;
-      } catch (error) {
-        const detail = error instanceof Error ? error.message : String(error);
-        errors.push(`openai ${OPENAI_MODEL}: falha de rede (${detail})`);
-        await sleep(1000);
-        break;
-      }
-    }
-  }
-
-  // Fallback: NVIDIA (motor antigo) se a OpenAI não respondeu.
-  if (nvidiaKey) {
-    const models = [NVIDIA_MODEL, ...FALLBACK_MODELS.filter((m) => m !== NVIDIA_MODEL)];
-
-    for (const model of models) {
-      // Retry de até 2x para sobrecarga (529) e rate limit (429).
-      for (let attempt = 0; attempt < 3; attempt++) {
-        try {
-          const { content, status } = await callModel(nvidiaKey, model, messages);
-
-          if (status === 200 && content) {
-            return content;
-          }
-
-          if (status === 529 || status === 429) {
-            // Sobrecarga/rate limit: espera e tenta de novo no mesmo modelo.
-            errors.push(`nvidia ${model}: status ${status} (tentativa ${attempt + 1})`);
-            await sleep(1500 * (attempt + 1));
-            continue;
-          }
-
-          if (status === 404 || status === 401) {
-            // Modelo indisponível para a conta ou chave inválida: pula para o próximo.
-            errors.push(`nvidia ${model}: status ${status}`);
-            break;
-          }
-
-          errors.push(`nvidia ${model}: status ${status} sem conteúdo`);
-          break;
-        } catch (error) {
-          const detail = error instanceof Error ? error.message : String(error);
-          errors.push(`nvidia ${model}: falha de rede (${detail})`);
-          await sleep(1000);
-          break;
-        }
-      }
-    }
+  // Ordem depende do provedor escolhido: DeepSeek tenta NVIDIA primeiro (menos moderação),
+  // OpenAI tenta a OpenAI primeiro. O outro vira fallback — nunca deixa de responder.
+  if (provider === "deepseek") {
+    const deepseek = nvidiaKey ? await tryNvidia(nvidiaKey, messages, errors) : null;
+    if (deepseek) return deepseek;
+    const openai = openaiKey ? await tryOpenAI(openaiKey, messages, errors) : null;
+    if (openai) return openai;
+  } else {
+    const openai = openaiKey ? await tryOpenAI(openaiKey, messages, errors) : null;
+    if (openai) return openai;
+    const deepseek = nvidiaKey ? await tryNvidia(nvidiaKey, messages, errors) : null;
+    if (deepseek) return deepseek;
   }
 
   throw new Error(

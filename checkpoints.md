@@ -51,3 +51,8 @@
 - Estado: FEITO. Build OK.
 - Mudanças: `ai.ts` (SEM FILTRO, NUNCA ATENDENTE, SEXO SEM RODEIO, MENINA REAL, você não é assistente), `personalidade.md` (Como ela escreve + Como ela seduz).
 - ⚠️ Pendência CRÍTICA: `gpt-4o-mini` (OpenAI) modera conteúdo — pode segurar palavrão/sexo explícito mesmo com prompt certo. Se travado no teste real, trocar para NVIDIA `deepseek-v4-flash`. Aguardando decisão do usuário.
+
+## Sessão 16 — Botão OpenAI ↔ DeepSeek
+- Estado: FEITO. Build OK.
+- Mudanças: `ai.ts` (Provider + generateReply com ordem por provedor), `route.ts` (provider no POST), `Chat.tsx` (toggle no header, persistido em localStorage).
+- ⚠️ Pendência: `.env` sem chave OpenAI — toggles caem ambos no NVIDIA até adicionar `OPENAI_API_KEY`. Validação runtime com o usuário.
