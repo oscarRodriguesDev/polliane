@@ -34,3 +34,9 @@
 - `globals.css`: `@custom-variant dark` + keyframes (fadeIn, haloDrift) + scrollbar custom.
 - `Chat.tsx`: redesign premium — toggle claro/escuro (localStorage), botão Resetar com confirmação, avatar gradiente, halos animados, bolhas com avatares, "digitando", sugestões de início.
 - Pendências: testar a chave OpenAI em runtime; corrigir o typo `OPENIAI_API_KEY` → `OPENAI_API_KEY` no `.env` (opcional, código já aceita os dois).
+
+## Sessão 13 — Anti-entrevista reforçado
+- Estado: FEITO. Build OK.
+- Queixa: entrevista em sequência + resposta curta gerava mais pergunta.
+- Mudanças: `ai.ts` (REGRA DA PERGUNTA ÚNICA + "NUNCA entreviste" reforçado), `personalidade.md` (Como ela interage + Forma de conversar).
+- Pendência: validar em runtime (usuário roda o servidor).

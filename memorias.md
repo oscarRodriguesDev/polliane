@@ -105,3 +105,9 @@
   - `Chat.tsx`: container com `h-dvh` (altura da viewport, funciona no mobile).
 - Resultado: só a lista de mensagens rola; input fica fixo embaixo.
 - Build OK.
+
+## Sessão 13 — Anti-entrevista reforçado (respostas curtas não geram perguntas)
+- Queixa: a Pollianne virava entrevistadora — pergunta em sequência ("o que você faz?", "como relaxa?", "que tipo de programação?", "como lida com pressão?"), e com resposta curta (ex.: "sim") ela devolvia mais pergunta. Conversa morria.
+- `ai.ts`: regra nova "REGRA DA PERGUNTA ÚNICA" — se a fala virar questionário ou a pessoa responder curto, REFAZ virando afirmação/comentário próprio/provocação. Reforço na regra "NUNCA entreviste" (máx 1 pergunta por fala; resposta curta → opinião, comentário ou provocação; conversa é mão-dupla).
+- `personalidade.md`: seção "Como ela interage" e "Forma de conversar" atualizadas com o mesmo princípio (resposta curta ≠ gatilho de pergunta).
+- Build OK.
