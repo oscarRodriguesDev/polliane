@@ -21,6 +21,10 @@ const OPENAI_URL = "https://api.openai.com/v1/chat/completions";
 // Motor principal: OpenAI. Modelo "4 mini" (gpt-4o-mini) é barato — parametrizável via env.
 const OPENAI_MODEL = process.env.OPENAI_MODEL ?? "gpt-4o-mini";
 
+// OpenRouter: um único endpoint que roteia para vários modelos (Grok, etc.).
+const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
+const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL ?? "x-ai/grok-4.5";
+
 const NVIDIA_URL = "https://integrate.api.nvidia.com/v1/chat/completions";
 const NVIDIA_MODEL = process.env.NVIDIA_MODEL ?? "deepseek-ai/deepseek-v4-flash";
 // Fila de fallback: se o modelo principal estiver sobrecarregado (529) ou falhar, tenta o próximo.
@@ -68,6 +72,35 @@ async function callModel(
   messages: ApiMessage[]
 ): Promise<{ content: string; status: number }> {
   const response = await fetch(NVIDIA_URL, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model,
+      messages,
+      temperature: 0.9,
+      max_tokens: 250,
+    }),
+  });
+
+  if (!response.ok) {
+    return { content: "", status: response.status };
+  }
+
+  const data = (await response.json()) as ChatCompletionResponse;
+  const content = data.choices?.[0]?.message?.content?.trim() ?? "";
+  return { content, status: response.status };
+}
+
+// OpenRouter é compatível com a API da OpenAI, mas o endpoint/headers próprios.
+async function callOpenRouter(
+  apiKey: string,
+  model: string,
+  messages: ApiMessage[]
+): Promise<{ content: string; status: number }> {
+  const response = await fetch(OPENROUTER_URL, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${apiKey}`,
@@ -274,8 +307,8 @@ export async function buildSystemPrompt(): Promise<string> {
 }
 
 // Provedor escolhido pela pessoa no chat.
-// "openai" = gpt-4o-mini (mais moderado/natural). "deepseek" = deepseek-v4-flash via NVIDIA (bem menos travado, mais picante).
-export type Provider = "openai" | "deepseek";
+// "openai" = gpt-4o-mini (mais moderado/natural). "deepseek" = deepseek-v4-flash via NVIDIA (bem menos travado, mais picante). "grok" = Grok via OpenRouter.
+export type Provider = "openai" | "deepseek" | "grok";
 
 async function tryOpenAI(
   openaiKey: string,
@@ -353,16 +386,48 @@ async function tryNvidia(
   return null;
 }
 
+async function tryOpenRouter(
+  apiKey: string,
+  messages: ApiMessage[],
+  errors: string[]
+): Promise<string | null> {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const { content, status } = await callOpenRouter(apiKey, OPENROUTER_MODEL, messages);
+
+      if (status === 200 && content) {
+        return content;
+      }
+
+      if (status === 429) {
+        errors.push(`openrouter ${OPENROUTER_MODEL}: status ${status} (tentativa ${attempt + 1})`);
+        await sleep(1500 * (attempt + 1));
+        continue;
+      }
+
+      errors.push(`openrouter ${OPENROUTER_MODEL}: status ${status} sem conteúdo`);
+      break;
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      errors.push(`openrouter ${OPENROUTER_MODEL}: falha de rede (${detail})`);
+      await sleep(1000);
+      break;
+    }
+  }
+  return null;
+}
+
 export async function generateReply(
   history: HistoryMessage[],
   provider: Provider = "openai"
 ): Promise<string> {
   const openaiKey = process.env.OPENAI_API_KEY ?? process.env.OPENIAI_API_KEY;
   const nvidiaKey = process.env.KEY_NVIDIA;
+  const openRouterKey = process.env.OPENROUTER_API_KEY ?? process.env.OPENROUTER_API;
 
-  if (!openaiKey && !nvidiaKey) {
+  if (!openaiKey && !nvidiaKey && !openRouterKey) {
     throw new Error(
-      "Nenhuma chave definida no ambiente. Adicione OPENAI_API_KEY (ou OPENIAI_API_KEY) ou KEY_NVIDIA ao .env."
+      "Nenhuma chave definida no ambiente. Adicione OPENAI_API_KEY (ou OPENIAI_API_KEY), KEY_NVIDIA ou OPENROUTER_API_KEY ao .env."
     );
   }
 
@@ -373,11 +438,20 @@ export async function generateReply(
 
   const errors: string[] = [];
 
-  // Ordem depende do provedor escolhido: DeepSeek tenta NVIDIA primeiro (menos moderação),
-  // OpenAI tenta a OpenAI primeiro. O outro vira fallback — nunca deixa de responder.
-  if (provider === "deepseek") {
+  // Ordem depende do provedor escolhido: cada um tenta o próprio motor primeiro
+  // e os outros viram fallback — nunca deixa de responder.
+  if (provider === "grok") {
+    const grok = openRouterKey ? await tryOpenRouter(openRouterKey, messages, errors) : null;
+    if (grok) return grok;
     const deepseek = nvidiaKey ? await tryNvidia(nvidiaKey, messages, errors) : null;
     if (deepseek) return deepseek;
+    const openai = openaiKey ? await tryOpenAI(openaiKey, messages, errors) : null;
+    if (openai) return openai;
+  } else if (provider === "deepseek") {
+    const deepseek = nvidiaKey ? await tryNvidia(nvidiaKey, messages, errors) : null;
+    if (deepseek) return deepseek;
+    const grok = openRouterKey ? await tryOpenRouter(openRouterKey, messages, errors) : null;
+    if (grok) return grok;
     const openai = openaiKey ? await tryOpenAI(openaiKey, messages, errors) : null;
     if (openai) return openai;
   } else {
@@ -385,6 +459,8 @@ export async function generateReply(
     if (openai) return openai;
     const deepseek = nvidiaKey ? await tryNvidia(nvidiaKey, messages, errors) : null;
     if (deepseek) return deepseek;
+    const grok = openRouterKey ? await tryOpenRouter(openRouterKey, messages, errors) : null;
+    if (grok) return grok;
   }
 
   throw new Error(

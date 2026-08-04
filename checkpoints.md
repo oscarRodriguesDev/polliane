@@ -56,3 +56,9 @@
 - Estado: FEITO. Build OK.
 - Mudanças: `ai.ts` (Provider + generateReply com ordem por provedor), `route.ts` (provider no POST), `Chat.tsx` (toggle no header, persistido em localStorage).
 - ⚠️ Pendência: `.env` sem chave OpenAI — toggles caem ambos no NVIDIA até adicionar `OPENAI_API_KEY`. Validação runtime com o usuário.
+
+## Sessão 17 — OpenRouter com Grok (3º provedor)
+- Estado: FEITO. Build OK.
+- Mudanças: `ai.ts` (OPENROUTER_URL, OPENROUTER_MODEL `x-ai/grok-4.5`, callOpenRouter, tryOpenRouter, Provider "grok", ordem grok→nvidia→openai), `route.ts` (aceita "grok"), `Chat.tsx` (ciclo OpenAI→DeepSeek→Grok).
+- Nota: chave no `.env` está como `OPEN_ROUTER_API` (código lê `OPENROUTER_API_KEY ?? OPENROUTER_API`).
+- Pendência: validar em runtime com o usuário (testar o Grok responder).

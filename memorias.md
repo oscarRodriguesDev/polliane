@@ -136,7 +136,19 @@
 - ⚠️ IMPORTANTE: modelo principal é `gpt-4o-mini` (OpenAI) — moderação embutida pode bloquear palavrão/sexo explícito MESMO com prompt certo. Se o teste real continuar travado, trocar para o fallback NVIDIA (`deepseek-v4-flash`, bem menos travado) via env `OPENAI_MODEL`/remoção da chave OpenAI. Pendente de decisão do usuário.
 - Build OK.
 
-## Sessão 16 — Botão de troca OpenAI ↔ DeepSeek no chat
+## Sessão 17 — OpenRouter com Grok (3º provedor)
+- Pedido: usar a chave do OpenRouter adicionada ao `.env` (`OPEN_ROUTER_API`) pra rodar Grok.
+- `ai.ts`:
+  - `OPENROUTER_URL` + `OPENROUTER_MODEL` (default `x-ai/grok-4.5`, env `OPENROUTER_MODEL`). OpenRouter é API-compatível com OpenAI.
+  - `callOpenRouter()` dedicado + `tryOpenRouter()` com retry/rate-limit.
+  - `Provider` agora é `"openai" | "deepseek" | "grok"`. `generateReply(history, provider)`:
+    - **grok**: OpenRouter primeiro → NVIDIA → OpenAI.
+    - **deepseek**: NVIDIA → OpenRouter → OpenAI.
+    - **openai**: OpenAI → NVIDIA → OpenRouter.
+    - Chaves lidas: `OPENAI_API_KEY ?? OPENIAI_API_KEY`, `KEY_NVIDIA`, `OPENROUTER_API_KEY ?? OPENROUTER_API`.
+- `route.ts`: provider aceita também `"grok"`.
+- `Chat.tsx`: botão do provedor agora cicla OpenAI → DeepSeek → Grok (cor âmbar pro Grok), com tooltip e label por provedor.
+- Build OK.
 - Pedido: botão no chat pra trocar entre OpenAI e DeepSeek (natural vs picante).
 - `ai.ts`: `Provider = "openai" | "deepseek"`. `generateReply(history, provider)` refatorado em `tryOpenAI`/`tryNvidia`. Modo **deepseek** tenta NVIDIA primeiro (menos travas, mais picante); modo **openai** tenta OpenAI primeiro. O outro vira fallback — nunca fica sem responder.
 - `route.ts`: POST aceita `provider` no body e repassa ao `generateReply`.

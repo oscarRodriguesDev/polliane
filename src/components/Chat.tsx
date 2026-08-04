@@ -15,7 +15,7 @@ type ChatResponse = {
   error?: string;
 };
 
-type Provider = "openai" | "deepseek";
+type Provider = "openai" | "deepseek" | "grok";
 
 const SUGGESTIONS = [
   "Ei, conta uma coisa engraçada do teu dia",
@@ -58,7 +58,7 @@ export default function Chat() {
   // Lê o provedor salvo no mount.
   useEffect(() => {
     const saved = localStorage.getItem("provider");
-    if (saved === "deepseek" || saved === "openai") {
+    if (saved === "deepseek" || saved === "openai" || saved === "grok") {
       setProvider(saved);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -128,6 +128,24 @@ export default function Chat() {
     }
   }
 
+  function cycleProvider() {
+    setProvider((prev) =>
+      prev === "openai" ? "deepseek" : prev === "deepseek" ? "grok" : "openai"
+    );
+  }
+
+  const providerLabel: Record<Provider, string> = {
+    openai: "OpenAI",
+    deepseek: "DeepSeek",
+    grok: "Grok",
+  };
+
+  const providerInfo: Record<Provider, string> = {
+    openai: "OpenAI: respostas naturais e moderadas.",
+    deepseek: "DeepSeek: sem travas, mais picante.",
+    grok: "Grok (OpenRouter): inteligente e picante.",
+  };
+
   async function handleReset() {
     if (!window.confirm("Zerar a conversa? A Pollianne vai esquecer de tudo.")) return;
     try {
@@ -180,28 +198,28 @@ export default function Chat() {
         <div className="flex shrink-0 items-center gap-1.5">
           <button
             type="button"
-            onClick={() => setProvider((prev) => (prev === "openai" ? "deepseek" : "openai"))}
-            title={
-              provider === "openai"
-                ? "OpenAI: respostas naturais e moderadas. Clique para trocar pro DeepSeek (picante)."
-                : "DeepSeek: sem travas, mais picante. Clique para trocar pro OpenAI (natural)."
-            }
+            onClick={cycleProvider}
+            title={providerInfo[provider] + " Clique para trocar o motor de IA."}
             className={
               "flex h-9 items-center gap-1.5 rounded-full px-3 text-xs font-semibold transition-colors sm:px-3.5 " +
-              (provider === "deepseek"
-                ? "bg-gradient-to-r from-fuchsia-500/15 to-violet-500/15 text-fuchsia-600 ring-1 ring-fuchsia-400/40 hover:bg-fuchsia-500/20 dark:text-fuchsia-400 dark:ring-fuchsia-500/40"
-                : "bg-zinc-100 text-zinc-600 ring-1 ring-zinc-300/70 hover:bg-zinc-200/70 dark:bg-zinc-900 dark:text-zinc-300 dark:ring-zinc-700")
+              (provider === "grok"
+                ? "bg-gradient-to-r from-amber-500/15 to-orange-500/15 text-amber-600 ring-1 ring-amber-400/40 hover:bg-amber-500/20 dark:text-amber-400 dark:ring-amber-500/40"
+                : provider === "deepseek"
+                  ? "bg-gradient-to-r from-fuchsia-500/15 to-violet-500/15 text-fuchsia-600 ring-1 ring-fuchsia-400/40 hover:bg-fuchsia-500/20 dark:text-fuchsia-400 dark:ring-fuchsia-500/40"
+                  : "bg-zinc-100 text-zinc-600 ring-1 ring-zinc-300/70 hover:bg-zinc-200/70 dark:bg-zinc-900 dark:text-zinc-300 dark:ring-zinc-700")
             }
           >
             <span
               className={
                 "h-1.5 w-1.5 rounded-full " +
-                (provider === "deepseek" ? "bg-fuchsia-500" : "bg-zinc-400 dark:bg-zinc-500")
+                (provider === "grok"
+                  ? "bg-amber-500"
+                  : provider === "deepseek"
+                    ? "bg-fuchsia-500"
+                    : "bg-zinc-400 dark:bg-zinc-500")
               }
             />
-            <span className="hidden sm:inline">
-              {provider === "deepseek" ? "DeepSeek" : "OpenAI"}
-            </span>
+            <span className="hidden sm:inline">{providerLabel[provider]}</span>
             <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
               <path d="M8 9l-4 4 4 4" />
               <path d="M16 9l4 4-4 4" />

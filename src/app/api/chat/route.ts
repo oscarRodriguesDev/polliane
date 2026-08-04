@@ -75,7 +75,8 @@ export async function POST(request: Request): Promise<NextResponse> {
     );
   }
 
-  const provider: Provider = body.provider === "deepseek" ? "deepseek" : "openai";
+  const provider: Provider =
+    body.provider === "deepseek" ? "deepseek" : body.provider === "grok" ? "grok" : "openai";
 
   addMessage(DEFAULT_CONVERSATION_ID, "user", message);
 
