@@ -153,7 +153,23 @@
 - ⚠️ LIMITE REAL: a fonte é o Unsplash (banco editorial de moda, grátis) — cobre sensual/lingerie/semi-nu, mas NÃO tem nudez/pornografia explícita. Para +18 explícito de verdade: comprar créditos no OpenRouter e voltar à geração por IA (flux.2-max), ou indicar uma fonte de imagens +18 com API/scraping. Decisão do usuário.
 - Build OK.
 
-## Sessão 21 — Foto de perfil da Pollianne no chat
+## Sessão 22 — Temperamento + emoções dinâmicas + painel dev
+- Pedido: personagem sempre passa por um problema diferente (sorteado), com temperamento (melancólico, colérico, sanguíneo, fleumático) sorteado que molda o humor; níveis de emoção (alegria, tristeza, ânimo, energia, ousadia, safadeza) começam aleatórios, mudam por evento e randomizam todo dia. Indicadores visíveis em dev (localhost).
+- Criado `src/lib/state.ts`:
+  - 4 temperamentos com `TEMPERAMENT_INFO` (como age em cada um).
+  - 6 emoções 0-100, `randomEmotions()`, `randomTemperament()`.
+  - Singleton `getEmotionalState()` — randomiza novo se a data mudou (dias bons/ruins).
+  - `applyEmotionChange()` com clamp 0-100; `rerollEmotionalState()` (reset manual).
+  - `PROBLEMAS_DO_DIA` (12 situações) + `pickProblem()`.
+  - `buildStateBlock()` — texto injetado no system prompt (temperamento + níveis + problema).
+- `ai.ts`: `buildSystemPrompt` agora injeta `buildStateBlock()` após a personalidade; regra que os níveis moldam a resposta sem citar números.
+- `src/app/api/state/route.ts` (novo): `GET` devolve estado (date, temperament, label, how, emotions); `POST ?reroll=true` sorteia de novo.
+- `chat/route.ts`: `applyMoodDrift(user, reply)` — regex analisa o texto da conversa e move emoções (kkk→alegria, "to mal"→tristeza, elogio→ânimo, sexo/lingerie→safadeza, rolê→energia...). Chamado após cada resposta.
+- `src/components/MoodPanel.tsx` (novo): painel fixo canto inferior esquerdo, **só em localhost** (hostname check), mostra temperamento (chip colorido), descrição, barras das 6 emoções, botão de reroll e recolher.
+- `page.tsx`: `<MoodPanel />` adicionado.
+- Teste real do estado OK (flegmatico + níveis, drift aplicado, problema sorteado).
+- Obs: formato pronto pra persistir em banco (1 registro/dia) — pendente quando ligar SQLite.
+- Build OK.
 - Usuário colocou `public/polli/foto-perfil.png`.
 - `Chat.tsx`: substituí os 3 avatares em gradiente com a letra "P" pela foto real:
   - Header (h-11 w-11 rounded-2xl).

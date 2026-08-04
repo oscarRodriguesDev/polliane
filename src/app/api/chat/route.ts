@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { generateReply, type HistoryMessage, type Provider } from "@/lib/ai";
 import { generateImage } from "@/lib/image";
+import { applyEmotionChange } from "@/lib/state";
 
 export const runtime = "nodejs";
 
@@ -67,6 +68,24 @@ async function resolvePhotoTag(reply: string): Promise<{ content: string; imageU
   }
 }
 
+// Aplica um pequeno "drift" emocional após cada troca de mensagem, imitando
+// como um evento na conversa mexe no humor. O sinal vem do texto trocado.
+function applyMoodDrift(userMessage: string, assistantReply: string): void {
+  const lower = (userMessage + " " + assistantReply).toLowerCase();
+
+  const change: Partial<Record<"alegria" | "tristeza" | "animo" | "energia" | "ousadia" | "safadeza", number>> =
+    {};
+
+  if (/kkk|kk|haha|risos|que graça|achei bom|adoro|amo/.test(lower)) change.alegria = 6;
+  if (/triste|mal|chatead|desabafo|to mal|cansei/.test(lower)) change.tristeza = 5;
+  if (/elogio|gostosa|linda|bonita|princesa|adoro você|amo você/.test(lower)) change.animo = 5;
+  if (/foto|sexy|lingerie|tesao|tesão|quero você|me excita|desejo/.test(lower)) change.safadeza = 8;
+  if (/brava|raiva|odeio|irrit|fica quieto|cala boca/.test(lower)) change.tristeza = 3;
+  if (/vamos sair|rolê|festa|bora|animada/.test(lower)) change.energia = 6;
+
+  applyEmotionChange(change);
+}
+
 export async function GET(): Promise<NextResponse> {
   return NextResponse.json({ messages: getMessages(DEFAULT_CONVERSATION_ID) });
 }
@@ -114,6 +133,7 @@ export async function POST(request: Request): Promise<NextResponse> {
     const reply = await generateReply(history, provider);
     const { content, imageUrl } = await resolvePhotoTag(reply);
     addMessage(DEFAULT_CONVERSATION_ID, "assistant", content, imageUrl);
+    applyMoodDrift(message, content);
   } catch (error) {
     console.error("Falha ao gerar resposta da IA:", error);
     return NextResponse.json(

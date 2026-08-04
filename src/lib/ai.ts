@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
+import { buildStateBlock } from "./state";
 
 export type ChatRole = "user" | "assistant";
 
@@ -300,6 +301,9 @@ export async function buildSystemPrompt(): Promise<string> {
     personality,
     "---",
   ];
+
+  // Estado emocional do dia (temperamento + níveis de emoção) molda a resposta.
+  parts.push("", buildStateBlock());
 
   const inspiration = await buildInspirationBlock();
   if (inspiration) {

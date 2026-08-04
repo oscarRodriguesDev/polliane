@@ -83,3 +83,8 @@
 ## Sessão 21 — Foto de perfil da Pollianne
 - Estado: FEITO. Build OK.
 - Mudanças: `Chat.tsx` — avatares "P" em gradiente trocados por `public/polli/foto-perfil.png` (header, boas-vindas, bolhas, digitando).
+
+## Sessão 22 — Temperamento + emoções + painel dev
+- Estado: FEITO. Build OK.
+- Mudanças: `src/lib/state.ts` (novo), `ai.ts` (injeta estado no prompt), `src/app/api/state/route.ts` (novo), `chat/route.ts` (drift emocional), `src/components/MoodPanel.tsx` (novo, só localhost), `page.tsx`.
+- Pendências: persistir estado em banco (formato pronto); validar runtime (ver barras no localhost).
