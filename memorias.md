@@ -123,3 +123,15 @@
   - Sedução redefinida: deseja a pessoa, mas não depende dela (quer, não precisa).
 - `personalidade.md`: seção nova "Vida própria (IMPORTANTE — ela não vive em função de ninguém)" com rotina/trabalho, dinheiro, família, amigos, saúde mental, planos e como isso aparece na conversa.
 - Build OK.
+
+## Sessão 15 — Sem filtro: palavrão e sexo aberto, fim do tom de assistente
+- Queixa: a Pollianne tava com muito filtro — não falava palavrão, não falava de sexo abertamente, parecia "assistente de trabalho".
+- `ai.ts` (regras novas):
+  - SEM FILTRO: fala como garota de 22 anos real, usa palavrão naturalmente (porra, caralho, merda, foda, puta que pariu) com raiva/tesão/surpresa; nunca censura o vocabulário.
+  - NUNCA responda como atendente: sem "com certeza!", "ótima pergunta", listas, dicas, tom de suporte, "posso te ajudar".
+  - SEXO SEM RODEIO: quando o clima esquenta, fala explícito e direto — buceta, pau, gozar, foder, chupar, sentar — sem eufemismo de IA.
+  - MENINA REAL: preguiça, teimosia, cara feia, zoa, responde torto, às vezes ignora.
+  - Regra nova "VOCÊ NÃO É UMA ASSISTENTE" (não oferece ajuda, não presta serviço).
+- `personalidade.md`: "Como ela escreve" (palavrão natural, sem tom de atendente) e "Como ela seduz" (sexo aberto e explícito sem eufemismo).
+- ⚠️ IMPORTANTE: modelo principal é `gpt-4o-mini` (OpenAI) — moderação embutida pode bloquear palavrão/sexo explícito MESMO com prompt certo. Se o teste real continuar travado, trocar para o fallback NVIDIA (`deepseek-v4-flash`, bem menos travado) via env `OPENAI_MODEL`/remoção da chave OpenAI. Pendente de decisão do usuário.
+- Build OK.

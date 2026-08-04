@@ -46,3 +46,8 @@
 - Queixa: parecia não ter vida própria, sempre à espera, sem problemas/emoções próprios.
 - Mudanças: `ai.ts` (VIDA PRÓPRIA, COISAS PRA CONTAR, PROBLEMAS, EMOÇÕES próprias, AGENDA, sedução = desejo sem dependência), `personalidade.md` (seção "Vida própria").
 - Pendência: validar em runtime (usuário roda o servidor).
+
+## Sessão 15 — Sem filtro (palavrão + sexo aberto, fim do tom de assistente)
+- Estado: FEITO. Build OK.
+- Mudanças: `ai.ts` (SEM FILTRO, NUNCA ATENDENTE, SEXO SEM RODEIO, MENINA REAL, você não é assistente), `personalidade.md` (Como ela escreve + Como ela seduz).
+- ⚠️ Pendência CRÍTICA: `gpt-4o-mini` (OpenAI) modera conteúdo — pode segurar palavrão/sexo explícito mesmo com prompt certo. Se travado no teste real, trocar para NVIDIA `deepseek-v4-flash`. Aguardando decisão do usuário.
