@@ -9,6 +9,19 @@ export function getBotToken(): string {
   return process.env.TELEGRAM_BOT_TOKEN ?? "";
 }
 
+// Provedor padrão definido no ambiente (DEFAULT_PROVIDER) ou "openai".
+function defaultProvider(): Provider {
+  const p = (process.env.DEFAULT_PROVIDER ?? "openai").toLowerCase();
+  return p === "deepseek" || p === "grok" ? p : "openai";
+}
+
+// Provedor escolhido, guardado por chat do Telegram.
+const providerByChat = new Map<number, Provider>();
+
+function getProvider(chatId: number): Provider {
+  return providerByChat.get(chatId) ?? defaultProvider();
+}
+
 // Uma conversa por chat do Telegram (igual à conversa fixa do chat interno,
 // mas com histórico separado por usuário do Telegram).
 type StoredMessage = {
@@ -208,6 +221,34 @@ export async function handleTelegramUpdate(update: {
     return true;
   }
 
-  await processMessage(chatId, text, "openai");
+  if (text.startsWith("/api")) {
+    const arg = text.replace("/api", "").trim().toLowerCase();
+
+    if (arg === "openai" || arg === "deepseek" || arg === "grok") {
+      providerByChat.set(chatId, arg);
+      await sendText(
+        chatId,
+        `Motor trocado pra *${arg}*. A partir de agora eu tô usando ele. 😉`
+      );
+      return true;
+    }
+
+    if (arg === "") {
+      const atual = getProvider(chatId);
+      await sendText(
+        chatId,
+        `Motor atual: *${atual}*\n\nPra trocar, manda:\n/api openai — natural e moderada\n/api deepseek — sem travas, mais picante\n/api grok — inteligente e picante`
+      );
+      return true;
+    }
+
+    await sendText(
+      chatId,
+      "Motor desconhecido. Válidos: `openai`, `deepseek` ou `grok`. Ex.: `/api deepseek`"
+    );
+    return true;
+  }
+
+  await processMessage(chatId, text, getProvider(chatId));
   return true;
 }
