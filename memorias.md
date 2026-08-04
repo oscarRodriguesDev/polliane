@@ -152,6 +152,15 @@
 - Teste real OK: "mulher de lingerie preta deitada na cama meia-luz" → retornou imagem via proxy.
 - ⚠️ LIMITE REAL: a fonte é o Unsplash (banco editorial de moda, grátis) — cobre sensual/lingerie/semi-nu, mas NÃO tem nudez/pornografia explícita. Para +18 explícito de verdade: comprar créditos no OpenRouter e voltar à geração por IA (flux.2-max), ou indicar uma fonte de imagens +18 com API/scraping. Decisão do usuário.
 - Build OK.
+
+## Sessão 21 — Foto de perfil da Pollianne no chat
+- Usuário colocou `public/polli/foto-perfil.png`.
+- `Chat.tsx`: substituí os 3 avatares em gradiente com a letra "P" pela foto real:
+  - Header (h-11 w-11 rounded-2xl).
+  - Tela inicial/boas-vindas (h-20 w-20 rounded-3xl).
+  - Bolhas de mensagem do assistant (h-8 w-8 rounded-xl).
+  - Indicador "digitando" (h-8 w-8 rounded-xl).
+- Build OK.
 - Pedido: gerar fotos da Pollianne em vários contextos usando as fotos de referência que o usuário vai colocar em `public/polli`; foto entra no chat quando o usuário pedir.
 - Criado `src/lib/image.ts`: gera imagem via OpenRouter `POST /api/v1/images` (endpoint dedicado, NÃO usa OpenAI). Modelo default `black-forest-labs/flux.2-max` (env `OPENROUTER_IMAGE_MODEL`). Lê fotos de `public/polli` (máx 8, jpg/png/webp/gif), converte pra base64 e manda como `input_references` (img2img → rosto consistente). Salva o resultado em `public/generated/polli-gen-<ts>.png` e devolve URL pública.
 - Criado `src/app/api/image/route.ts`: POST `/api/image` com `{ prompt, aspectRatio?, quality? }` → `{ url }`.

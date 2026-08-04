@@ -79,3 +79,7 @@
 - Mudanças: `image.ts` (buildQuery com termos sensuais + cores + stopwords), `ai.ts` (regra FOTO SENSIAL).
 - Limite real: Unsplash cobre sensual/lingerie, mas sem nudez explícita. Para +18 explícito: créditos OpenRouter (geração) ou fonte própria. Decisão do usuário.
 - Teste real OK (lingerie meia-luz → imagem).
+
+## Sessão 21 — Foto de perfil da Pollianne
+- Estado: FEITO. Build OK.
+- Mudanças: `Chat.tsx` — avatares "P" em gradiente trocados por `public/polli/foto-perfil.png` (header, boas-vindas, bolhas, digitando).

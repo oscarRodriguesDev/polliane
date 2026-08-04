@@ -181,9 +181,11 @@ export default function Chat() {
       <header className="relative z-10 flex items-center justify-between gap-3 border-b border-zinc-200/70 px-4 py-3 backdrop-blur-md sm:px-6 sm:py-4 dark:border-zinc-800/70">
         <div className="flex min-w-0 items-center gap-3">
           <div className="relative shrink-0">
-            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-fuchsia-500 via-pink-500 to-violet-600 font-serif text-xl font-bold text-white shadow-lg shadow-fuchsia-500/30">
-              P
-            </div>
+            <img
+              src="/polli/foto-perfil.png"
+              alt="Foto da Pollianne"
+              className="h-11 w-11 rounded-2xl object-cover shadow-lg shadow-fuchsia-500/30"
+            />
             <span className="absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full border-2 border-white bg-emerald-400 dark:border-zinc-900" />
           </div>
           <div className="min-w-0">
@@ -264,9 +266,11 @@ export default function Chat() {
       <div className="relative z-10 flex flex-1 flex-col gap-4 overflow-y-auto px-4 py-6 sm:px-6">
         {messages.length === 0 && !loading ? (
           <div className="mx-auto flex w-full max-w-md flex-col items-center justify-center gap-5 py-14 text-center">
-            <div className="flex h-20 w-20 items-center justify-center rounded-3xl bg-gradient-to-br from-fuchsia-500 via-pink-500 to-violet-600 font-serif text-4xl font-bold text-white shadow-2xl shadow-fuchsia-500/40">
-              P
-            </div>
+            <img
+              src="/polli/foto-perfil.png"
+              alt="Foto da Pollianne"
+              className="h-20 w-20 rounded-3xl object-cover shadow-2xl shadow-fuchsia-500/40"
+            />
             <div>
               <h2 className="text-xl font-semibold text-zinc-900 dark:text-zinc-50">
                 Oi, eu sou a Pollianne 👋
@@ -296,9 +300,11 @@ export default function Chat() {
               style={{ animation: "fadeIn 0.25s ease-out" }}
             >
               {message.role === "assistant" && (
-                <div className="mb-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-fuchsia-500 via-pink-500 to-violet-600 text-sm font-bold text-white">
-                  P
-                </div>
+                <img
+                  src="/polli/foto-perfil.png"
+                  alt="Foto da Pollianne"
+                  className="mb-1 h-8 w-8 shrink-0 rounded-xl object-cover"
+                />
               )}
               <div
                 className={`max-w-[78%] whitespace-pre-wrap break-words px-4 py-2.5 text-sm leading-relaxed sm:max-w-[65%] ${
@@ -346,9 +352,11 @@ export default function Chat() {
 
         {loading && (
           <div className="flex items-end gap-2.5" style={{ animation: "fadeIn 0.2s ease-out" }}>
-            <div className="mb-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-fuchsia-500 via-pink-500 to-violet-600 text-sm font-bold text-white">
-              P
-            </div>
+            <img
+              src="/polli/foto-perfil.png"
+              alt="Foto da Pollianne"
+              className="mb-1 h-8 w-8 shrink-0 rounded-xl object-cover"
+            />
             <div className="flex items-center gap-1.5 rounded-2xl rounded-bl-md bg-surface px-4 py-3.5 shadow-sm ring-1 ring-zinc-200/70 dark:ring-zinc-700/50">
               {[0, 1, 2].map((dot) => (
                 <span
