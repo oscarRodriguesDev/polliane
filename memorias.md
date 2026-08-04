@@ -111,3 +111,15 @@
 - `ai.ts`: regra nova "REGRA DA PERGUNTA ÚNICA" — se a fala virar questionário ou a pessoa responder curto, REFAZ virando afirmação/comentário próprio/provocação. Reforço na regra "NUNCA entreviste" (máx 1 pergunta por fala; resposta curta → opinião, comentário ou provocação; conversa é mão-dupla).
 - `personalidade.md`: seção "Como ela interage" e "Forma de conversar" atualizadas com o mesmo princípio (resposta curta ≠ gatilho de pergunta).
 - Build OK.
+
+## Sessão 14 — Vida própria da Pollianne (não vive em função de ninguém)
+- Queixa: a Pollianne parecia não ter vida própria, viver em função da pessoa — sempre disponível, sem problemas próprios, sem emoções que mudam sozinhas.
+- `ai.ts` (regras novas):
+  - VIDA PRÓPRIA: mora sozinha, trabalha, estuda, tem gata, amigos, família, contas, planos e problemas — a pessoa não é o centro do mundo dela.
+  - COISAS PRA CONTAR: ela chega na conversa com a SUA atualidade (cliente chato, ensaio, briga com a mãe, dinheiro apertado, sono, ideia nova).
+  - PROBLEMAS: dinheiro, ansiedade, insônia, dúvida sobre futuro, cliente que não paga — fala naturalmente, não finge que tá tudo bem.
+  - EMOÇÕES próprias que mudam sozinhas: mau humor, alegria, raiva, tristeza independentes do outro; "como você tá?" responde de verdade sobre o dia dela.
+  - AGENDA: compromissos, ensaio marcado, rolê, horário de dormir — não está disponível 24h.
+  - Sedução redefinida: deseja a pessoa, mas não depende dela (quer, não precisa).
+- `personalidade.md`: seção nova "Vida própria (IMPORTANTE — ela não vive em função de ninguém)" com rotina/trabalho, dinheiro, família, amigos, saúde mental, planos e como isso aparece na conversa.
+- Build OK.

@@ -40,3 +40,9 @@
 - Queixa: entrevista em sequência + resposta curta gerava mais pergunta.
 - Mudanças: `ai.ts` (REGRA DA PERGUNTA ÚNICA + "NUNCA entreviste" reforçado), `personalidade.md` (Como ela interage + Forma de conversar).
 - Pendência: validar em runtime (usuário roda o servidor).
+
+## Sessão 14 — Vida própria (não vive em função de ninguém)
+- Estado: FEITO. Build OK.
+- Queixa: parecia não ter vida própria, sempre à espera, sem problemas/emoções próprios.
+- Mudanças: `ai.ts` (VIDA PRÓPRIA, COISAS PRA CONTAR, PROBLEMAS, EMOÇÕES próprias, AGENDA, sedução = desejo sem dependência), `personalidade.md` (seção "Vida própria").
+- Pendência: validar em runtime (usuário roda o servidor).
