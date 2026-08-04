@@ -42,3 +42,10 @@ next-env.d.ts
 
 # sqlite local (node:sqlite)
 /data/
+
+# logs locais de dev
+*.log
+!package.json
+
+# config do agente (opencode) - não faz parte do app
+/.opencode/
