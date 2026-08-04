@@ -136,7 +136,15 @@
 - ⚠️ IMPORTANTE: modelo principal é `gpt-4o-mini` (OpenAI) — moderação embutida pode bloquear palavrão/sexo explícito MESMO com prompt certo. Se o teste real continuar travado, trocar para o fallback NVIDIA (`deepseek-v4-flash`, bem menos travado) via env `OPENAI_MODEL`/remoção da chave OpenAI. Pendente de decisão do usuário.
 - Build OK.
 
-## Sessão 17 — OpenRouter com Grok (3º provedor)
+## Sessão 18 — Geração de imagens da Pollianne (OpenRouter, sem OpenAI)
+- Pedido: gerar fotos da Pollianne em vários contextos usando as fotos de referência que o usuário vai colocar em `public/polli`; foto entra no chat quando o usuário pedir.
+- Criado `src/lib/image.ts`: gera imagem via OpenRouter `POST /api/v1/images` (endpoint dedicado, NÃO usa OpenAI). Modelo default `black-forest-labs/flux.2-max` (env `OPENROUTER_IMAGE_MODEL`). Lê fotos de `public/polli` (máx 8, jpg/png/webp/gif), converte pra base64 e manda como `input_references` (img2img → rosto consistente). Salva o resultado em `public/generated/polli-gen-<ts>.png` e devolve URL pública.
+- Criado `src/app/api/image/route.ts`: POST `/api/image` com `{ prompt, aspectRatio?, quality? }` → `{ url }`.
+- `ai.ts`: regra "FOTO SOB DEMANDA" — se a pessoa pedir foto ou o momento ficar visual, a Pollianne responde com texto normal + tag `[[FOTO: descrição da cena em PT]]` na última linha. Regra anti-queima de personagem (nunca fala de sistema/IA).
+- `route.ts` do chat: `resolvePhotoTag()` detecta a tag, chama `generateImage`, limpa a tag do texto e anexa `imageUrl` à mensagem do assistant (StoredMessage ganhou `imageUrl`). Se a geração falhar, segue só com o texto.
+- `Chat.tsx`: bolha do assistant renderiza `<img>` quando `message.imageUrl` existe.
+- ⚠️ Pendência: `public/polli` está VAZIA — sem fotos de referência a geração falha (erro claro avisa). Usuário precisa colocar as fotos.
+- Build OK.
 - Pedido: usar a chave do OpenRouter adicionada ao `.env` (`OPEN_ROUTER_API`) pra rodar Grok.
 - `ai.ts`:
   - `OPENROUTER_URL` + `OPENROUTER_MODEL` (default `x-ai/grok-4.5`, env `OPENROUTER_MODEL`). OpenRouter é API-compatível com OpenAI.

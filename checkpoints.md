@@ -62,3 +62,8 @@
 - Mudanças: `ai.ts` (OPENROUTER_URL, OPENROUTER_MODEL `x-ai/grok-4.5`, callOpenRouter, tryOpenRouter, Provider "grok", ordem grok→nvidia→openai), `route.ts` (aceita "grok"), `Chat.tsx` (ciclo OpenAI→DeepSeek→Grok).
 - Nota: chave no `.env` está como `OPEN_ROUTER_API` (código lê `OPENROUTER_API_KEY ?? OPENROUTER_API`).
 - Pendência: validar em runtime com o usuário (testar o Grok responder).
+
+## Sessão 18 — Geração de imagens (OpenRouter, sem OpenAI)
+- Estado: FEITO. Build OK.
+- Mudanças: `src/lib/image.ts` (novo), `src/app/api/image/route.ts` (novo, POST /api/image), `ai.ts` (regra FOTO SOB DEMANDA + tag `[[FOTO: cena]]`), `chat/route.ts` (resolvePhotoTag → imageUrl), `Chat.tsx` (renderiza <img>).
+- Pendência: `public/polli` VAZIA — usuário precisa colocar as fotos de referência. Validação runtime com o usuário.

@@ -7,6 +7,7 @@ type Message = {
   conversationId: number;
   role: "user" | "assistant";
   content: string;
+  imageUrl?: string;
   createdAt: string;
 };
 
@@ -309,6 +310,15 @@ export default function Chat() {
                 }`}
               >
                 {message.content}
+                {message.imageUrl && (
+                  <div className="flex justify-center pt-2">
+                    <img
+                      src={message.imageUrl}
+                      alt="Foto da Pollianne"
+                      className="max-h-72 w-auto max-w-full rounded-2xl border border-zinc-200/70 object-cover shadow-md dark:border-zinc-700/50"
+                    />
+                  </div>
+                )}
               </div>
               {message.role === "user" && (
                 <div className="mb-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-zinc-200 text-xs font-bold text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">

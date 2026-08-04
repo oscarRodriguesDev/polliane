@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { generateReply, type HistoryMessage, type Provider } from "@/lib/ai";
+import { generateImage } from "@/lib/image";
 
 export const runtime = "nodejs";
 
@@ -12,6 +13,7 @@ type StoredMessage = {
   conversationId: string;
   role: "user" | "assistant";
   content: string;
+  imageUrl?: string;
   createdAt: string;
 };
 
@@ -28,7 +30,8 @@ function getMessages(conversationId: string): StoredMessage[] {
 function addMessage(
   conversationId: string,
   role: "user" | "assistant",
-  content: string
+  content: string,
+  imageUrl?: string
 ): StoredMessage {
   const messages = getMessages(conversationId);
   const message: StoredMessage = {
@@ -36,10 +39,32 @@ function addMessage(
     conversationId,
     role,
     content,
+    imageUrl,
     createdAt: new Date().toISOString(),
   };
   messages.push(message);
   return message;
+}
+
+// Detecta a tag [[FOTO: cena]] no fim da resposta, gera a imagem e devolve o
+// texto limpo + caminho da imagem gerada. Se não houver tag, devolve igual.
+async function resolvePhotoTag(reply: string): Promise<{ content: string; imageUrl?: string }> {
+  const match = reply.match(/\[\[FOTO: ([\s\S]*?)\]\]/);
+  if (!match) {
+    return { content: reply };
+  }
+
+  const scene = match[1].trim();
+  const content = reply.replace(match[0], "").trim();
+
+  try {
+    const url = await generateImage(scene);
+    return { content, imageUrl: url };
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    console.error("Falha ao gerar foto:", detail);
+    return { content };
+  }
 }
 
 export async function GET(): Promise<NextResponse> {
@@ -87,7 +112,8 @@ export async function POST(request: Request): Promise<NextResponse> {
 
   try {
     const reply = await generateReply(history, provider);
-    addMessage(DEFAULT_CONVERSATION_ID, "assistant", reply);
+    const { content, imageUrl } = await resolvePhotoTag(reply);
+    addMessage(DEFAULT_CONVERSATION_ID, "assistant", content, imageUrl);
   } catch (error) {
     console.error("Falha ao gerar resposta da IA:", error);
     return NextResponse.json(
