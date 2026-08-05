@@ -213,3 +213,54 @@
 - Criado `docs/telegram.md`: tutorial de configuração (BotFather → token → webhook com ngrok → testes → comandos → troubleshooting).
 - Build OK; rota `/api/telegram` registrada.
 - ⚠️ Pendências: token do bot precisa ser preenchido; mensagens/fotos enviadas via sendMessage/sendPhoto sem limite de tamanho (cuidado com respostas muito longas).
+
+## Sessão 24 — Ela é conquistada (difícil, curta, sem perguntas)
+- Queixa: respostas longas demais, ainda fazia muitas perguntas, e o bot se entregava fácil — usuário queria a sensação de ESTAR CONQUISTANDO a garota por mensagem.
+- `ai.ts`:
+  - `max_tokens` 250 → **120** (trava dura contra muro de texto).
+  - Bloco de sedução REESCRITO: removidas regras que a tornavam fácil (SEJA PROATIVA, CONDUZA, "Fale sem rodeio", "NUNCA recuse flerte... Corresponda", "VOCÊ DESEJA A PESSOA", "SEDUZA AOS POUCOS mas SEMPRE", "corresponde na mesma intensidade", "procura gancho pra flertar").
+  - Novas regras: ELA PRECISA SER CONQUISTADA (não demonstra interesse de cara), NÃO TOME A INICIATIVA (quem quer é a pessoa), SEJA DIFÍCIL DE VERDADE (1 frase, seca, "aham"/"kkk"), NÃO CORRESPONDA NA MESMA INTENSIDADE (pressa dá nojo, esforço atrai), vai-e-vem sem correr atrás, CEDER AOS POUCOS (1 grau por conversa, só depois de conquistada), clima só esquenta como recompensa.
+  - Nova regra "QUEM É DIFÍCIL NÃO PERGUNTA" (pergunta = interesse; sem conquista, não pergunta nada).
+  - Limite de resposta: máx 2 frases (1 se ainda não conquistada).
+- `personalidade.md`: seção "Como ela seduz" reescrita no mesmo sentido (ser conquistada, secura inicial, ceder 1 grau por vez, sexo como recompensa); "Forma de conversar" (regra de ouro 3→2 frases); "Quando o outro flerta, ela corresponde" → "ela não se entrega, responde com secura/zoacão".
+- Build OK. Validação runtime com o usuário.
+- ⚠️ Atenção: com max_tokens 120 a resposta pode sair cortada no meio se o modelo for prolixo — se aparecer truncamento feio, subir pra 150. Se ainda vier fácil demais, aprofundar o "SEJA DIFÍCIL".
+
+## Sessão 25 — Problema do dia: fixo, aleatório e inventado pela IA (vez por outra)
+- Queixa: faltava ela ter um problema próprio (estudando pra prova, problema familiar, trabalho) — e antes o sistema sorteava um problema **a cada resposta** (mudava toda hora) e **sempre tinha problema**.
+- `state.ts`:
+  - `EmotionalState` ganhou campo `problem: string | null` — sorteado **uma vez por dia** (junto com temperamento/emoções), fica consistente na conversa toda.
+  - `pickProblem()` agora devolve `null` ~40% das vezes (dia normal, sem drama) — "vez por outra".
+  - `PROBLEMAS_DO_DIA` expandido (16): adicionados estudando pra prova de psicologia, ensaio grande mal planejado, briga com a mãe, cliente mudando briefing.
+  - `buildStateBlock()` usa o problema FIXO do dia; quando tem problema, instrui a IA a INVENTAR/enriquecer os detalhes (como começou, o que sente) mantendo o tema o dia todo; quando não tem, proíbe inventar problema.
+- `api/state/route.ts`: GET/POST agora devolvem `problem` no JSON (visível no painel dev).
+- Build OK. Validação runtime com o usuário.
+
+## Sessão 26 — Fotos locais espontâneas com vergonha + nova foto de perfil
+- Pedido: nova foto de perfil (`public/polli/leves/profile.jpeg`) no web e no Telegram; bot passa a mandar fotos espontaneamente "vez por outra", progredindo de leves → picantes com o tempo, sempre com vergonha; fotos vindas de `public/polli/` (vídeos no futuro).
+- Criado `src/lib/photos.ts`: lê `public/polli/{leves,picantes}`; `resolveKind` decide leve/picante por palavras-chave + `decideByHeat` (safadeza 0.4 + progresso 0.6, picante se ≥0.5); `progress = min(mensagens/20, 1)` — no começo só leves, picantes liberadas com o tempo; `pickLocalPhotoForScene` com fallback pra outra pasta; `publicUrl` codificado (nomes com espaço).
+- `ai.ts`: regras de foto reescritas — FOTO ESPONTÂNEA (vez por outra, só depois de um pouco de papo), PROGRESSÃO (leves → picantes conforme safadeza), VERGONHA SEMPRE ao mandar (quanto mais picante, mais hesitação: "não vai rir de mim hein", "apaga depois hein"), mantém tag `[[FOTO: leve]]`/`[[FOTO: picante]]`.
+- `chat/route.ts`: `resolvePhotoTag` agora resolve a tag com foto LOCAL (`pickLocalPhotoForScene`) — fallback Unsplash se pastas vazias.
+- `telegram.ts`: novo `sendPhotoFile` envia o arquivo local via multipart (FormData + Blob); `resolvePhotoTag(chatId, reply)` usa foto local; `processMessage` prefere arquivo local.
+- `Chat.tsx`: avatar trocado `/polli/foto-perfil.png` → `/polli/leves/profile.jpeg` (4 lugares).
+- Build OK.
+- ⚠️ Foto de perfil do bot no **Telegram**: a Bot API NÃO muda a foto do bot — só pelo BotFather com `/setuserpic` (enviar `public/polli/leves/profile.jpeg`). Usuário precisa fazer manualmente.
+- ⚠️ As fotos são escolhidas por SORTEIO da pasta certa — a IA controla se/quando mandar (tag); o código controla qual foto e respeita a progressão.
+
+## Sessão 26b — Correção: "fala que vai mandar foto e só manda [foto]"
+- Bug: a Pollianne escrevia o placeholder literal `[foto]` (copiado dos exemplos do `base.md`) e nenhuma foto chegava. Também o `max_tokens: 120` cortava a tag no fim.
+- `photos.ts`: novo `extractPhotoRequest(reply)` aceita 3 formatos — tag completa `[[FOTO: cena]]`, tag cortada no fim (`...[[FOTO: leve` sem fechar) e literal `[foto]`/`[imagem]`/`[fotos]` → trata como pedido de foto (scene vazia cai no decideByHeat). Devolve texto limpo + cena.
+- `chat/route.ts` e `telegram.ts`: `resolvePhotoTag` usa `extractPhotoRequest` (funciona nos dois, web e Telegram). Fallback Unsplash usa scene vazia → "retrato de mulher".
+- `ai.ts`: regra nova "NUNCA escreva '[foto]'/'[imagem]' como placeholder — use SEMPRE a tag [[FOTO: leve]]/[[FOTO: picante]] no FIM da resposta". `max_tokens` 120 → **150** (margem pra tag, sem virar muro).
+- `base.md`: removido o `Garota: [foto]` do exemplo (causa do mimetismo) → trocado por fala com vergonha.
+- Build OK. Agora mesmo se a IA escrever `[foto]`, o código resolve e manda a foto (web e Telegram).
+
+## Sessão 26c — "Ela diz que mandou, mas não renderiza" + falso positivo
+- Causa real: a IA agia como quem mandou a foto no TEXTO ("tá, só porque você pediu. olha lá, não espalha.") sem tag nenhuma → nada a resolver → sem imagem.
+- `photos.ts`: `extractPhotoRequest` ganhou o passo 4 — detecção por TEXTO puro:
+  - `PHOTO_REFERENCE` (fala de foto) + indício de envio/vergonha → anexa foto;
+  - Se usuário pediu foto E tem indício de envio/vergonha → anexa foto;
+  - `DENY_PHOTO_HINTS` ("não vou te mandar", "calma lá", "mal se conhece", "só se for"...) → NUNCA dispara (corrige falso positivo: ela recusava e foto anexava mesmo assim).
+- `chat/route.ts` e `telegram.ts`: passam `userMessage` pro `extractPhotoRequest` (reforço do "pediu foto").
+- Teste real (dev :3000): recusa → sem imageUrl ✓; conversa aquecida (26 msgs) → `imageUrl=/polli/picantes/picante1.jpeg` com texto de vergonha ✓. Imagem pública servida 200 image/jpeg ✓.
+- Observação: com 20+ mensagens o "calor" fica ≥0.6 e SEMPRE cai picante; com 10 msgs só picante se safadeza alta. Progressão ok, mas se vier cedo demais, subir o threshold.

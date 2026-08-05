@@ -1,6 +1,9 @@
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { generateReply, type HistoryMessage, type Provider } from "@/lib/ai";
 import { generateImage } from "@/lib/image";
-import { applyEmotionChange } from "@/lib/state";
+import { applyEmotionChange, getEmotionalState } from "@/lib/state";
+import { pickLocalPhotoForScene, extractPhotoRequest } from "@/lib/photos";
 
 const TELEGRAM_API = "https://api.telegram.org";
 
@@ -93,6 +96,39 @@ export async function sendPhoto(chatId: number, photoUrl: string, caption: strin
   });
 }
 
+function mimeFor(filePath: string): string {
+  const ext = path.extname(filePath).toLowerCase();
+  const mime: Record<string, string> = {
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".png": "image/png",
+    ".webp": "image/webp",
+    ".gif": "image/gif",
+  };
+  return mime[ext] ?? "application/octet-stream";
+}
+
+// Envia uma foto que está no DISCO (public/polli) via multipart — o Telegram
+// não consegue baixar URLs locais, então o arquivo é subido junto.
+export async function sendPhotoFile(chatId: number, filePath: string, caption: string): Promise<void> {
+  const token = getBotToken();
+  const buffer = readFileSync(filePath);
+  const form = new FormData();
+  form.append("chat_id", String(chatId));
+  form.append("photo", new Blob([buffer], { type: mimeFor(filePath) }), path.basename(filePath));
+  form.append("caption", caption);
+  form.append("parse_mode", "Markdown");
+
+  const res = await fetch(`${TELEGRAM_API}/bot${token}/sendPhoto`, {
+    method: "POST",
+    body: form,
+  });
+  const data = (await res.json()) as { ok: boolean; description?: string };
+  if (!data.ok) {
+    throw new Error(`Telegram sendPhoto: ${data.description ?? "erro desconhecido"}`);
+  }
+}
+
 // Registra a URL pública que o Telegram usará pra entregar os updates.
 export async function setWebhook(url: string): Promise<unknown> {
   return callApi("setWebhook", { url });
@@ -107,22 +143,34 @@ export async function getWebhookInfo(): Promise<unknown> {
   return callApi("getWebhookInfo", {});
 }
 
-// Detecta a tag [[FOTO: cena]] e devolve texto limpo + URL pública da imagem.
-// `remote: true` pro Telegram (ele baixa a foto direto da URL do Unsplash).
+// Detecta pedido de foto na resposta (tag [[FOTO: ...]] completa, cortada ou o
+// literal "[foto]") e devolve texto limpo + a foto LOCAL da Pollianne
+// (public/polli). O Telegram recebe o caminho do arquivo no disco (enviado via
+// multipart). Se as pastas estiverem vazias, tenta o Unsplash (URL pública).
 async function resolvePhotoTag(
+  chatId: number,
   reply: string,
-  remote: boolean
-): Promise<{ content: string; imageUrl?: string }> {
-  const match = reply.match(/\[\[FOTO: ([\s\S]*?)\]\]/);
-  if (!match) {
+  userMessage?: string
+): Promise<{ content: string; imageUrl?: string; filePath?: string }> {
+  const req = extractPhotoRequest(reply, userMessage);
+  if (!req) {
     return { content: reply };
   }
 
-  const scene = match[1].trim();
-  const content = reply.replace(match[0], "").trim();
+  const { content, scene } = req;
 
   try {
-    const url = await generateImage(scene, { remote });
+    const totalMessages = getMessages(chatId).length;
+    const progress = Math.min(totalMessages / 20, 1);
+    const state = getEmotionalState();
+
+    const photo = pickLocalPhotoForScene(scene, state.emotions.safadeza, progress);
+    if (photo) {
+      return { content, imageUrl: photo.publicUrl, filePath: photo.filePath };
+    }
+
+    // Fallback (pastas vazias): URL pública do Unsplash (o Telegram baixa direto).
+    const url = await generateImage(scene || "retrato de mulher", { remote: true });
     return { content, imageUrl: url };
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
@@ -164,11 +212,13 @@ async function processMessage(
 
   try {
     const reply = await generateReply(history, provider);
-    const { content, imageUrl } = await resolvePhotoTag(reply, true);
+    const { content, imageUrl, filePath } = await resolvePhotoTag(chatId, reply, userMessage);
     addMessage(chatId, "assistant", content, imageUrl);
     applyMoodDrift(userMessage, content);
 
-    if (imageUrl) {
+    if (filePath) {
+      await sendPhotoFile(chatId, filePath, content);
+    } else if (imageUrl) {
       await sendPhoto(chatId, imageUrl, content);
     } else {
       await sendText(chatId, content);

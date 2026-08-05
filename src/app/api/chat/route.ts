@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { generateReply, type HistoryMessage, type Provider } from "@/lib/ai";
 import { generateImage } from "@/lib/image";
-import { applyEmotionChange } from "@/lib/state";
+import { applyEmotionChange, getEmotionalState } from "@/lib/state";
+import { pickLocalPhotoForScene, extractPhotoRequest } from "@/lib/photos";
 
 export const runtime = "nodejs";
 
@@ -47,19 +48,34 @@ function addMessage(
   return message;
 }
 
-// Detecta a tag [[FOTO: cena]] no fim da resposta, gera a imagem e devolve o
-// texto limpo + caminho da imagem gerada. Se não houver tag, devolve igual.
-async function resolvePhotoTag(reply: string): Promise<{ content: string; imageUrl?: string }> {
-  const match = reply.match(/\[\[FOTO: ([\s\S]*?)\]\]/);
-  if (!match) {
+// Detecta pedido de foto na resposta (tag [[FOTO: ...]] completa, cortada ou o
+// literal "[foto]") e anexa uma foto LOCAL da Pollianne (public/polli). Se as
+// pastas estiverem vazias, tenta a busca no Unsplash como fallback. Sem pedido
+// de foto, devolve o texto igual.
+async function resolvePhotoTag(
+  reply: string,
+  userMessage?: string
+): Promise<{ content: string; imageUrl?: string }> {
+  const req = extractPhotoRequest(reply, userMessage);
+  if (!req) {
     return { content: reply };
   }
 
-  const scene = match[1].trim();
-  const content = reply.replace(match[0], "").trim();
+  const { content, scene } = req;
 
   try {
-    const url = await generateImage(scene);
+    // Progressão: quanto mais mensagens, mais "calor" libera fotos picantes.
+    const totalMessages = getMessages(DEFAULT_CONVERSATION_ID).length;
+    const progress = Math.min(totalMessages / 20, 1);
+    const state = getEmotionalState();
+
+    const photo = pickLocalPhotoForScene(scene, state.emotions.safadeza, progress);
+    if (photo) {
+      return { content, imageUrl: photo.publicUrl };
+    }
+
+    // Fallback (pastas vazias): foto parecida via Unsplash.
+    const url = await generateImage(scene || "retrato de mulher");
     return { content, imageUrl: url };
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
@@ -131,7 +147,7 @@ export async function POST(request: Request): Promise<NextResponse> {
 
   try {
     const reply = await generateReply(history, provider);
-    const { content, imageUrl } = await resolvePhotoTag(reply);
+    const { content, imageUrl } = await resolvePhotoTag(reply, message);
     addMessage(DEFAULT_CONVERSATION_ID, "assistant", content, imageUrl);
     applyMoodDrift(message, content);
   } catch (error) {

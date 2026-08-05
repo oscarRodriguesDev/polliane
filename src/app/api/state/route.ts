@@ -18,6 +18,7 @@ export async function GET(): Promise<NextResponse> {
     temperamentLabel: TEMPERAMENT_INFO[state.temperament].label,
     temperamentHow: TEMPERAMENT_INFO[state.temperament].how,
     emotions: state.emotions,
+    problem: state.problem,
   });
 }
 
@@ -31,5 +32,6 @@ export async function POST(request: Request): Promise<NextResponse> {
     temperamentLabel: TEMPERAMENT_INFO[state.temperament].label,
     temperamentHow: TEMPERAMENT_INFO[state.temperament].how,
     emotions: state.emotions as EmotionLevels,
+    problem: state.problem,
   });
 }

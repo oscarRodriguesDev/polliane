@@ -88,3 +88,33 @@
 - Estado: FEITO. Build OK.
 - Mudanças: `src/lib/state.ts` (novo), `ai.ts` (injeta estado no prompt), `src/app/api/state/route.ts` (novo), `chat/route.ts` (drift emocional), `src/components/MoodPanel.tsx` (novo, só localhost), `page.tsx`.
 - Pendências: persistir estado em banco (formato pronto); validar runtime (ver barras no localhost).
+
+## Sessão 24 — Ela é conquistada (difícil, curta, sem perguntas)
+- Estado: FEITO. Build OK.
+- Queixa: respostas longas, muitas perguntas, fácil demais — faltava a sensação de conquista.
+- Mudanças: `ai.ts` (max_tokens 250→120; bloco de sedução reescrito: ser conquistada, não tomar iniciativa, secura, ceder 1 grau por vez, "quem é difícil não pergunta"; máx 2 frases), `personalidade.md` ("Como ela seduz" reescrita, regra de ouro 3→2 frases, flerte não é correspondido de graça).
+- Pendências: validar runtime (usuário roda o servidor); se respostas saírem cortadas, subir max_tokens pra 150.
+
+## Sessão 25 — Problema do dia: fixo, aleatório e inventado pela IA (vez por outra)
+- Estado: FEITO. Build OK.
+- Queixa: faltava ela ter problema próprio (prova/família/trabalho); antes o problema mudava a cada resposta e sempre existia.
+- Mudanças: `state.ts` (problem no EmotionalState sorteado 1x/dia; pickProblem ~60% de chance, senão dia normal; lista de 12→16 problemas; buildStateBlock usa problema fixo e deixa a IA inventar detalhes), `api/state/route.ts` (devolve problem no JSON).
+- Pendências: validar runtime (usuário roda o servidor).
+
+## Sessão 26 — Fotos locais espontâneas com vergonha + nova foto de perfil
+- Estado: FEITO. Build OK.
+- Mudanças: `src/lib/photos.ts` (novo — sorteio de fotos locais leves/picantes com progressão por safadeza+mensagens), `ai.ts` (regras FOTO ESPONTÂNEA + PROGRESSÃO + VERGONHA), `chat/route.ts` e `telegram.ts` (tag [[FOTO]] → foto local; Telegram envia arquivo via multipart), `Chat.tsx` (avatar → `/polli/leves/profile.jpeg`).
+- Pendências: no Telegram a foto de perfil do bot só muda pelo BotFather `/setuserpic` (sem API); validar runtime (usuário roda o servidor).
+
+## Sessão 26b — Correção do placeholder "[foto]"
+- Estado: FEITO. Build OK.
+- Bug: bot dizia que ia mandar foto e só escrevia `[foto]` (imitava o `base.md`); `max_tokens: 120` cortava a tag.
+- Mudanças: `photos.ts` (extractPhotoRequest aceita tag completa/cortada/literal [foto]), `chat/route.ts` + `telegram.ts` (usam extractPhotoRequest), `ai.ts` (regra anti-placeholder + max_tokens 120→150), `base.md` (removido exemplo `[foto]`).
+- Pendências: validar runtime (web e Telegram).
+
+## Sessão 26c — Foto "diz que mandou mas não renderiza" + falso positivo
+- Estado: FEITO. Build OK.
+- Causa: IA agia como quem mandou a foto sem usar a tag → nada resolvia.
+- Mudanças: `photos.ts` (extractPhotoRequest passo 4 — detecção por texto: referência a foto + indício de envio/vergonha; DENY_PHOTO_HINTS bloqueia recusas), `chat/route.ts` + `telegram.ts` (passam userMessage).
+- Teste real OK (dev :3000): recusa sem foto ✓; com conversa aquecida foto chega com vergonha ✓.
+- Pendências: usuário testar no Telegram; se picante vier cedo demais, subir threshold do decideByHeat.

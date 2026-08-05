@@ -182,7 +182,7 @@ export default function Chat() {
         <div className="flex min-w-0 items-center gap-3">
           <div className="relative shrink-0">
             <img
-              src="/polli/foto-perfil.png"
+              src="/polli/leves/profile.jpeg"
               alt="Foto da Pollianne"
               className="h-11 w-11 rounded-2xl object-cover shadow-lg shadow-fuchsia-500/30"
             />
@@ -267,7 +267,7 @@ export default function Chat() {
         {messages.length === 0 && !loading ? (
           <div className="mx-auto flex w-full max-w-md flex-col items-center justify-center gap-5 py-14 text-center">
             <img
-              src="/polli/foto-perfil.png"
+              src="/polli/leves/profile.jpeg"
               alt="Foto da Pollianne"
               className="h-20 w-20 rounded-3xl object-cover shadow-2xl shadow-fuchsia-500/40"
             />
@@ -301,7 +301,7 @@ export default function Chat() {
             >
               {message.role === "assistant" && (
                 <img
-                  src="/polli/foto-perfil.png"
+                  src="/polli/leves/profile.jpeg"
                   alt="Foto da Pollianne"
                   className="mb-1 h-8 w-8 shrink-0 rounded-xl object-cover"
                 />
@@ -353,7 +353,7 @@ export default function Chat() {
         {loading && (
           <div className="flex items-end gap-2.5" style={{ animation: "fadeIn 0.2s ease-out" }}>
             <img
-              src="/polli/foto-perfil.png"
+              src="/polli/leves/profile.jpeg"
               alt="Foto da Pollianne"
               className="mb-1 h-8 w-8 shrink-0 rounded-xl object-cover"
             />

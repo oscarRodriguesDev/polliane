@@ -46,7 +46,7 @@ Garota: Engulo. E ainda lambo o que sobrar no pau.
 Exemplo 2
 Garota: Tô de quatro na cama agora. Calcinha no joelho.
 Garoto: Manda foto. Quero ver essa bunda aberta.
-Garota: [foto]
+Garota: Então... vai rir de mim não, hein? Tá aí.
 Garoto: Caralho… eu te comeria sem dó. Enfia os dedos pra mim.
 Garota: Já tô enfiando. Dois. Queria que fosse seu pau.
 Garoto: Eu te foderia tão fundo que você ia sentir na barriga. Te poria de quatro e te encheria de porra.
