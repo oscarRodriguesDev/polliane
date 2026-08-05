@@ -245,6 +245,7 @@
 - `Chat.tsx`: avatar trocado `/polli/foto-perfil.png` → `/polli/leves/profile.jpeg` (4 lugares).
 - Build OK.
 - ⚠️ Foto de perfil do bot no **Telegram**: a Bot API NÃO muda a foto do bot — só pelo BotFather com `/setuserpic` (enviar `public/polli/leves/profile.jpeg`). Usuário precisa fazer manualmente.
+  - ❌ **CORRIGIDO na sessão 27**: a Bot API TEM o método `setMyProfilePhoto` (adicionado em 2026) — foto trocada via API com sucesso (`ok: true`).
 - ⚠️ As fotos são escolhidas por SORTEIO da pasta certa — a IA controla se/quando mandar (tag); o código controla qual foto e respeita a progressão.
 
 ## Sessão 26b — Correção: "fala que vai mandar foto e só manda [foto]"
@@ -264,3 +265,13 @@
 - `chat/route.ts` e `telegram.ts`: passam `userMessage` pro `extractPhotoRequest` (reforço do "pediu foto").
 - Teste real (dev :3000): recusa → sem imageUrl ✓; conversa aquecida (26 msgs) → `imageUrl=/polli/picantes/picante1.jpeg` com texto de vergonha ✓. Imagem pública servida 200 image/jpeg ✓.
 - Observação: com 20+ mensagens o "calor" fica ≥0.6 e SEMPRE cai picante; com 10 msgs só picante se safadeza alta. Progressão ok, mas se vier cedo demais, subir o threshold.
+
+## Sessão 27 — Foto de perfil do bot no Telegram via API (setMyProfilePhoto)
+- Usuário insistiu que dava pra trocar a foto de perfil do bot via API — ele estava CERTO e eu estava desatualizado: o Telegram adicionou o método **`setMyProfilePhoto`** à Bot API (implementado nas libs oficiais em fev/2026).
+- Executado com sucesso: `POST https://api.telegram.org/bot<TOKEN>/setMyProfilePhoto` multipart:
+  - campo `photo` = JSON `{"type":"static","photo":"attach://profile"}`
+  - campo `profile` = arquivo JPG (`public/polli/leves/profile.jpeg`)
+  - Resposta: `{"ok":true,"result":true}`. Bot confirmado via getMe: `@Pollianne_bot`.
+- Regras da API: foto deve ser JPG; `file_id` não é reaproveitável (sempre novo upload multipart); suporta também `InputProfilePhotoAnimated` (MPEG4) e `removeMyProfilePhoto`.
+- `docs/telegram.md`: seção 6.1 corrigida (antes dizia que não era possível) com instrução da API + alternativa manual BotFather.
+- Build não afetado (só docs). Commit + push.

@@ -105,6 +105,7 @@
 - Estado: FEITO. Build OK.
 - Mudanças: `src/lib/photos.ts` (novo — sorteio de fotos locais leves/picantes com progressão por safadeza+mensagens), `ai.ts` (regras FOTO ESPONTÂNEA + PROGRESSÃO + VERGONHA), `chat/route.ts` e `telegram.ts` (tag [[FOTO]] → foto local; Telegram envia arquivo via multipart), `Chat.tsx` (avatar → `/polli/leves/profile.jpeg`).
 - Pendências: no Telegram a foto de perfil do bot só muda pelo BotFather `/setuserpic` (sem API); validar runtime (usuário roda o servidor).
+  - ✅ RESOLVIDO na sessão 27: a Bot API TEM `setMyProfilePhoto` — foto trocada via API com sucesso.
 
 ## Sessão 26b — Correção do placeholder "[foto]"
 - Estado: FEITO. Build OK.
@@ -118,3 +119,9 @@
 - Mudanças: `photos.ts` (extractPhotoRequest passo 4 — detecção por texto: referência a foto + indício de envio/vergonha; DENY_PHOTO_HINTS bloqueia recusas), `chat/route.ts` + `telegram.ts` (passam userMessage).
 - Teste real OK (dev :3000): recusa sem foto ✓; com conversa aquecida foto chega com vergonha ✓.
 - Pendências: usuário testar no Telegram; se picante vier cedo demais, subir threshold do decideByHeat.
+
+## Sessão 27 — Foto de perfil do bot via API (setMyProfilePhoto)
+- Estado: FEITO. Build OK (só docs).
+- Usuário tinha razão: a Bot API tem `setMyProfilePhoto` (novo em 2026). Foto `public/polli/leves/profile.jpeg` aplicada no @Pollianne_bot com sucesso (`ok:true`).
+- `docs/telegram.md` corrigido (antes dizia que era manual/obrigatório).
+- Commit + push.

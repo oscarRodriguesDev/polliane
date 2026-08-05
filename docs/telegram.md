@@ -115,17 +115,34 @@ O navegador deve mostrar algo como:
 
 ## 6.1 Foto de perfil do bot
 
-> ⚠️ **A Bot API do Telegram NÃO tem método para trocar a foto do bot.** A única
-> forma é manual, pelo **@BotFather** (mesmo lugar onde o bot foi criado):
+A Bot API tem o método **`setMyProfilePhoto`** — a foto do bot pode ser trocada
+por código (método adicionado à API oficial em 2026). Já usamos ele pra definir
+a foto atual do bot.
 
-1. Abra o Telegram e pesquise **@BotFather**.
-2. Envie o comando `/setuserpic`.
-3. Escolha o bot (ex.: `pollianne_bot`).
-4. Envie o arquivo de imagem — use o `profile.jpeg` do projeto:
-   ```
-   public/polli/leves/profile.jpeg
-   ```
-5. Pronto: o bot mostra a foto nova no perfil e nas conversas.
+### Via API (automático)
+
+```
+POST https://api.telegram.org/bot<TOKEN>/setMyProfilePhoto
+```
+
+- Corpo: `multipart/form-data`
+- Campo `photo`: JSON `{"type":"static","photo":"attach://profile"}`
+- Campo `profile`: o arquivo de imagem (obrigatoriamente **JPG**)
+
+Exemplo com curl:
+
+```bash
+curl -X POST "https://api.telegram.org/bot<TOKEN>/setMyProfilePhoto" \
+  -F "photo={\"type\":\"static\",\"photo\":\"attach://profile\"};type=application/json" \
+  -F "profile=@public/polli/leves/profile.jpeg;type=image/jpeg"
+```
+
+> Regras da API: a foto precisa ser **JPG**; `file_id` não pode ser reaproveitado
+> — o arquivo sempre é enviado como novo (multipart).
+
+### Manual (alternativa)
+
+No **@BotFather**: comando `/setuserpic` + enviar o arquivo.
 
 > As fotos que o bot **manda nas conversas** não têm nada a ver com a foto de
 > perfil: elas vêm de `public/polli/leves/` (leves) e `public/polli/picantes/`
