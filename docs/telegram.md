@@ -113,6 +113,26 @@ O navegador deve mostrar algo como:
 
 ---
 
+## 6.1 Foto de perfil do bot
+
+> ⚠️ **A Bot API do Telegram NÃO tem método para trocar a foto do bot.** A única
+> forma é manual, pelo **@BotFather** (mesmo lugar onde o bot foi criado):
+
+1. Abra o Telegram e pesquise **@BotFather**.
+2. Envie o comando `/setuserpic`.
+3. Escolha o bot (ex.: `pollianne_bot`).
+4. Envie o arquivo de imagem — use o `profile.jpeg` do projeto:
+   ```
+   public/polli/leves/profile.jpeg
+   ```
+5. Pronto: o bot mostra a foto nova no perfil e nas conversas.
+
+> As fotos que o bot **manda nas conversas** não têm nada a ver com a foto de
+> perfil: elas vêm de `public/polli/leves/` (leves) e `public/polli/picantes/`
+> (picantes), escolhidas automaticamente conforme a conversa esquenta.
+
+---
+
 ## 7. Como funciona por baixo dos panos
 
 - **`src/app/api/telegram/route.ts`** — recebe os updates do Telegram
