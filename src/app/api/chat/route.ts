@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
-import { generateReply, type HistoryMessage, type Provider } from "@/lib/ai";
+import { generateReply, updateLearningFromHistory, type HistoryMessage, type Provider } from "@/lib/ai";
 import { generateImage } from "@/lib/image";
 import { applyEmotionChange, getEmotionalState } from "@/lib/state";
 import { pickLocalPhotoForScene, extractPhotoRequest } from "@/lib/photos";
+import { splitIntoBubbles } from "@/lib/bubbles";
 
 export const runtime = "nodejs";
 
@@ -16,6 +17,7 @@ type StoredMessage = {
   role: "user" | "assistant";
   content: string;
   imageUrl?: string;
+  bubbles?: string[];
   createdAt: string;
 };
 
@@ -33,7 +35,8 @@ function addMessage(
   conversationId: string,
   role: "user" | "assistant",
   content: string,
-  imageUrl?: string
+  imageUrl?: string,
+  bubbles?: string[]
 ): StoredMessage {
   const messages = getMessages(conversationId);
   const message: StoredMessage = {
@@ -42,6 +45,7 @@ function addMessage(
     role,
     content,
     imageUrl,
+    bubbles,
     createdAt: new Date().toISOString(),
   };
   messages.push(message);
@@ -148,8 +152,11 @@ export async function POST(request: Request): Promise<NextResponse> {
   try {
     const reply = await generateReply(history, provider);
     const { content, imageUrl } = await resolvePhotoTag(reply, message);
-    addMessage(DEFAULT_CONVERSATION_ID, "assistant", content, imageUrl);
+    const bubbles = splitIntoBubbles(content);
+    addMessage(DEFAULT_CONVERSATION_ID, "assistant", content, imageUrl, bubbles);
     applyMoodDrift(message, content);
+    // Personalidade flexível: a Pollianne reescreve o que aprendeu sobre a pessoa.
+    await updateLearningFromHistory(history, provider);
   } catch (error) {
     console.error("Falha ao gerar resposta da IA:", error);
     return NextResponse.json(

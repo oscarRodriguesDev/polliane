@@ -1,11 +1,22 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { generateReply, type HistoryMessage, type Provider } from "@/lib/ai";
+import { generateReply, updateLearningFromHistory, type HistoryMessage, type Provider } from "@/lib/ai";
 import { generateImage } from "@/lib/image";
 import { applyEmotionChange, getEmotionalState } from "@/lib/state";
 import { pickLocalPhotoForScene, extractPhotoRequest } from "@/lib/photos";
+import { splitIntoBubbles } from "@/lib/bubbles";
 
 const TELEGRAM_API = "https://api.telegram.org";
+
+// Delay ALEATÓRIO de 0 a 10 segundos entre o envio de cada balão — parece
+// que a pessoa pensa e digita sem ritmo fixo (menos robótico).
+function randomDelayMs(): number {
+  return Math.floor(Math.random() * 10000);
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 // Token do bot lido do .env (TELEGRAM_BOT_TOKEN).
 export function getBotToken(): string {
@@ -32,6 +43,7 @@ type StoredMessage = {
   role: "user" | "assistant";
   content: string;
   imageUrl?: string;
+  bubbles?: string[];
   createdAt: string;
 };
 
@@ -48,7 +60,8 @@ function addMessage(
   chatId: number,
   role: "user" | "assistant",
   content: string,
-  imageUrl?: string
+  imageUrl?: string,
+  bubbles?: string[]
 ): StoredMessage {
   const messages = getMessages(chatId);
   const message: StoredMessage = {
@@ -56,6 +69,7 @@ function addMessage(
     role,
     content,
     imageUrl,
+    bubbles,
     createdAt: new Date().toISOString(),
   };
   messages.push(message);
@@ -84,6 +98,16 @@ export async function sendText(chatId: number, text: string): Promise<void> {
     text,
     parse_mode: "Markdown",
   });
+}
+
+// Aciona o balão "digitando..." real do Telegram (typing) enquanto o bot
+// "pensa" e envia os balões com delay. Deve ser chamado repetidamente.
+export async function sendTyping(chatId: number): Promise<void> {
+  try {
+    await callApi("sendChatAction", { chat_id: chatId, action: "typing" });
+  } catch {
+    // Se falhar, ignora — é só um indicador visual.
+  }
 }
 
 // Envia foto (URL pública) com legenda.
@@ -211,21 +235,34 @@ async function processMessage(
   }));
 
   try {
+    await sendTyping(chatId); // "digitando..." enquanto a IA pensa e manda os balões
     const reply = await generateReply(history, provider);
     const { content, imageUrl, filePath } = await resolvePhotoTag(chatId, reply, userMessage);
-    addMessage(chatId, "assistant", content, imageUrl);
+    const bubbles = splitIntoBubbles(content);
+    addMessage(chatId, "assistant", content, imageUrl, bubbles);
     applyMoodDrift(userMessage, content);
+    // Personalidade flexível: reescreve o que aprendeu sobre este usuário.
+    await updateLearningFromHistory(history, provider);
 
+    // Foto (se houver) sempre vai com o primeiro balão; o resto vira mensagens
+    // soltas, enviadas com um pequeno delay entre si pra não parecer robô.
+    const [first, ...rest] = bubbles;
     if (filePath) {
-      await sendPhotoFile(chatId, filePath, content);
+      await sendPhotoFile(chatId, filePath, first ?? content);
     } else if (imageUrl) {
-      await sendPhoto(chatId, imageUrl, content);
+      await sendPhoto(chatId, imageUrl, first ?? content);
     } else {
-      await sendText(chatId, content);
+      await sendText(chatId, first ?? content);
+    }
+    for (const bubble of rest) {
+      await sleep(randomDelayMs());
+      // Reaviva o "digitando..." do Telegram (dura ~5s) antes do próximo balão.
+      await sendTyping(chatId);
+      await sendText(chatId, bubble);
     }
   } catch (error) {
     console.error("Falha ao gerar resposta (Telegram):", error);
-    await sendText(chatId, "Deixa eu tentar de novo... dá uma outra chance pra mim? 💔");
+    await sendText(chatId, "Dá uma outra chance pra mim? Deixa eu tentar de novo... 😅");
   }
 }
 

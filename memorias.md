@@ -275,3 +275,68 @@
 - Regras da API: foto deve ser JPG; `file_id` não é reaproveitável (sempre novo upload multipart); suporta também `InputProfilePhotoAnimated` (MPEG4) e `removeMyProfilePhoto`.
 - `docs/telegram.md`: seção 6.1 corrigida (antes dizia que não era possível) com instrução da API + alternativa manual BotFather.
 - Build não afetado (só docs). Commit + push.
+
+## Sessão 28 — Reequilíbrio: mais fácil de conquistar, menos "aham", mais natural
+- Queixa: o bot tava DIFÍCIL demais de conquistar (secura/párati do comando da sessão 24) e usava o termo "aham" com vício, soando robótico e chato.
+- `ai.ts` (bloco de sedução reescrito, linhas 256-264):
+  - Removidos os "NÃO TOME A INICIATIVA", "SEJA DIFÍCIL DE VERDADE" (1 frase / 'aham'), "NÃO CORRESPONDA NA MESMA INTENSIDADE", "JOGO DE VAI-E-VEM frio", "cede 1 grau por vez" e "clima só após ritual".
+  - Novas regras: ela gosta de ser cortejada mas NÃO é fria; "SE DEIXA CONQUISTAR DE VERDADE" (interesse recíproco adianta); "SEJA NATURAL E QUENTE, NUNCA SECA" (proibido resposta só 'aham'/'sei'/'kkk' — toda resposta tem substância); "FLERTEÉ MÃO-DUPLA" (corresponde ao charme, zomba só de pressa sem respeito); "CONQUISTA AVANÇA, ELA ESQUENTA JUNTO".
+  - "QUEM É DIFÍCIL NÃO PERGUNTA" → "perguntas naturais são ok em mão-dupla, sem virar questionário".
+  - Comprimento: "1-3 frases com substância, nunca vazia" (antes max 1 frase/palavra solta).
+- `personalidade.md`: "Como ela seduz", "Como ela escreve" (aham só às vezes, não padrão), "Como ela interage" e "Forma de conversar" (1-3 frases, perguntas naturais ok) reescritos no mesmo sentido — quente, fácil de conversar e receptiva.
+- Build OK. Validação runtime fica com o usuário.
+- Nota: foco foi melhorar a conversa; elementto de "conquistar" foi suavizado mas mantida a personalidade forte (opinião, vida própria, "eu sou real", sexo aberto).
+
+## Sessão 29 — Respostas divididas em vários balões curtos (estilo WhatsApp)
+- Pedido: se a resposta passar de ~100 caracteres, dividir em várias "balõezinhos" (balão 1: "oi como vc ta eu to bem" / balão 2: "mas to me sentindo estranha" / balão 3: ...).
+- Criado `src/lib/bubbles.ts`: `splitIntoBubbles(text, maxLen=100)` quebra o texto nos pontos naturais (vírgula, ponto, ?, !, …) e quebras de linha, sem cortar palavra; só força quebra dura se for inevitável. Devolve `string[]` (>= 1).
+- `chat/route.ts`: `StoredMessage` ganhou `bubbles?: string[]`; `addMessage` recebe o 5º param; após `resolvePhotoTag`, chama `splitIntoBubbles(content)` e guarda os balões na mensagem.
+- `Chat.tsx`: `Message` ganhou `bubbles`; o map de mensagens agora itera os balões — cada balão vira uma bolha separada (avatar e bolha só na última), foto do assistant renderizada abaixo das bolhas.
+- `telegram.ts`: `StoredMessage` ganhou `bubbles?`; `processMessage` envia cada balão como mensagem separada (`sendText`), foto vai com o primeiro balão.
+- Build OK.
+- Teste manual do helper: "oi como vc ta eu to bem mas to me sentindo estranha parece que as pessoas não me entendem ninguém quer ouvir o que eu sinto" → 2 balões (97 e 25 chars), sem cortar palavra. ✓
+
+## Sessão 30 — Delay entre balões (não parece fake) + tag "BOT" do Telegram
+- Pedido: entre um balão e outro deve haver delay; balões todos de uma vez parecem fake. (Deixo a tag "BOT" do Telegram.)
+- `Chat.tsx` (web):
+  - `BUBBLE_DELAY_MS = 650`.
+  - Novo estado `revealed` (id → nº de balões visíveis) para revelação progressiva.
+  - `lastRevealedIdRef` impede animar no load inicial/histórico — só a resposta mais recente é revelada balão a balão.
+  - Efeito: 1º balão depois de 400ms, seguintes a cada +650ms, com `scrollIntoView` a cada novo balão.
+  - Reset zera `revealed` e o ref.
+- `telegram.ts`: `BUBBLE_DELAY_MS = 900` (mais espaçado que o web); `sleep()` entre envios dos balões (foto fica no 1º).
+- Build OK. Validação runtime com o usuário.
+- ⚠️ Tag "BOT": o selo/badge "BOT" do Telegram é imposto pela plataforma — não existe opção (Bot API, BotFather) que remova. Bot sempre exibe o ícone de robozinho/BOT nos clientes. Nenhuma config do código muda.
+
+## Sessão 31 — Delay aleatório (0 a 10s) entre balões
+- Pedido: delay maior e ALEATÓRIO, de 0 a 10 segundos (ritmo humano de digitação).
+- `Chat.tsx`: `randomDelayMs()` devolve 0-10000ms; o efeito de revelação acumula um delay aleatório a cada balão (1º após ~400ms + rand, seguintes somando rand a cada balão), com scroll a cada aparição. Removido `BUBBLE_DELAY_MS`.
+- `telegram.ts`: `randomDelayMs()` 0-10000ms entre `sendText` dos balões; removido `BUBBLE_DELAY_MS`.
+- Build OK. Validação runtime com o usuário.
+
+## Sessão 32 — Indicador "digitando" durante a revelação dos balões
+- Pedido: enquanto o balão não é apresentado, a Pollianne deve estar "digitando".
+- `Chat.tsx`: novo estado `revealing` (true durante a revelação progressiva dos balões, desligado quando o último balão aparece). O indicador de "digitando..." (barrinhas + avatar) agora renderiza com `loading || revealing` — antes só aparecia no fetch, sumia durante os delays dos balões.
+- `telegram.ts`: novo `sendTyping(chatId)` (chama `sendChatAction` action `typing`, ignora erro). Chamado antes de gerar a resposta e antes de cada balão seguinte (pois o typing do Telegram dura ~5s). Assim o balão "digitando" real do Telegram fica ativo nos delays.
+- Build OK. Validação runtime com o usuário.
+
+## Sessão 33 — Personalidade re-consultada periodicamente (cache com TTL)
+- Pedido: o bot deve consultar `personalidade.md` de tempos em tempos, ciente de mudanças para responder corretamente.
+- `ai.ts`: `readPersonality()` agora usa cache em memória com TTL — `PERSONALITY_TTL_MS` (env, default 60000ms = 1 min). A cada TTL o arquivo é re-lido do disco; edições no `.md` passam a valer sem reiniciar o servidor, e sem ler do disco a cada mensagem.
+- Build OK. Validação runtime com o usuário.
+
+## Sessão 34 — Personalidade flexível: Pollianne aprende com o usuário (reescreve personalidade.md)
+- Pedido: o `personalidade.md` deve virar flexível — a IA reescreve conforme a interação, adaptando-se ao usuário pra ficar "perfeita" pra quem conversa com ela.
+- Desenho SEGURO (não reescreve a base): mantém `personalidade.md` intacto; adiciona no FINAL uma seção `<!-- APRENDIZADO SOBRE O USUÁRIO -->` que a IA reescreve periodicamente.
+- `ai.ts`:
+  - Imports: `writeFileSync`.
+  - `readLearnedSection()` / `writeLearnedSection()` (lê/reescreve a seção entre os marcadores, preservando a base; zera `personalityCache` após escrita).
+  - `buildLearningPrompt(history)`: pede pra IA, em 1ª pessoa, resumir em ≤300 chars o que aprendeu sobre a pessoa (nome, jeito, gostos, elogios, apelidos, tom). Conversa truncada em 60 msgs.
+  - `produceLearning(...)`: chama o mesmo fallback de provedores do generateReply.
+  - `updateLearningFromHistory(history, provider)`: roda a cada ≥4 msgs novas e ≥2 msgs do usuário; só grava se o texto gerado >10 chars.
+  - `buildLearnedBlock()`: injeta o conteúdo aprendido no system prompt ("O QUE VOCÊ APRENDEU SOBRE A PESSOA...") — injetado em `buildSystemPrompt()` junto ao estado e inspiração.
+  - Gating por `MIN_NEW_MESSAGES_BETWEEN_LEARNS=4` (economia de token).
+- `chat/route.ts` e `telegram.ts`: chamam `updateLearningFromHistory` após cada resposta.
+- `personalidade.md`: seção inicial adicionada com marcadores e texto inicial.
+- Build OK. Validação runtime com o usuário.
+- ⚠️ Observação: o aprendizado reescreve o arquivo do disco; o `personalityCache` é zerado a cada gravação pra valer na próxima mensagem. Feature que evolui a persona ao longo da conversa.

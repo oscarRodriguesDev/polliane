@@ -8,6 +8,7 @@ type Message = {
   role: "user" | "assistant";
   content: string;
   imageUrl?: string;
+  bubbles?: string[];
   createdAt: string;
 };
 
@@ -25,17 +26,29 @@ const SUGGESTIONS = [
   "Me manda uma cantada",
 ];
 
+// Atrasa a aparição de cada balão por um tempo ALEATÓRIO de 0 a 10 segundos,
+// simulando uma pessoa que digita sem ritmo fixo (menos "fake").
+function randomDelayMs(): number {
+  return Math.floor(Math.random() * 10000);
+}
+
 export default function Chat() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Quantos balões de cada mensagem do bot já "apareceram" (revelação progressiva).
+  const [revealed, setRevealed] = useState<Record<number, number>>({});
+  // True enquanto os balões da resposta estão sendo revelados (mostra "digitando").
+  const [revealing, setRevealing] = useState(false);
   // Inicia sempre dark (igual ao SSR) e corrige após o mount para evitar hydration mismatch.
   const [dark, setDark] = useState<boolean>(true);
   // Provedor de IA: "openai" (gpt-4o-mini, mais moderado) ou "deepseek" (sem travas, mais picante).
   const [provider, setProvider] = useState<Provider>("openai");
   const endRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
+  // Último id de mensagem do bot que já foi revelado (evita animar no load inicial).
+  const lastRevealedIdRef = useRef<number | null>(null);
 
   // Mantém o foco na caixa de texto: no primeiro carregamento e sempre que o envio termina
   // (loading volta a false), para não precisar clicar com o mouse pra digitar de novo.
@@ -78,6 +91,56 @@ export default function Chat() {
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+  }, [messages, loading]);
+
+  // Revelação progressiva: quando chega uma resposta nova do bot com vários
+  // balões, mostra um a um (com pequeno delay) em vez de tudo de uma vez.
+  useEffect(() => {
+    if (loading) return;
+    const lastAssistant = [...messages].reverse().find((m) => m.role === "assistant");
+    if (!lastAssistant) return;
+
+    const bubbles = Array.isArray(lastAssistant.bubbles)
+      ? lastAssistant.bubbles.length
+      : 1;
+
+    // Só anima se for uma mensagem nova que ainda não passou pela revelação.
+    if (lastRevealedIdRef.current === lastAssistant.id) {
+      setRevealed((r) => ({ ...r, [lastAssistant.id]: bubbles }));
+      return;
+    }
+
+    if (bubbles <= 1) {
+      setRevealed((r) => ({ ...r, [lastAssistant.id]: bubbles }));
+      lastRevealedIdRef.current = lastAssistant.id;
+      return;
+    }
+
+    // Começa fechado (mostra só o indicador de digitando por um instante).
+    setRevealed((r) => ({ ...r, [lastAssistant.id]: 0 }));
+    setRevealing(true);
+    const timers: ReturnType<typeof setTimeout>[] = [];
+    const reveal = (n: number) => {
+      setRevealed((r) => ({ ...r, [lastAssistant.id]: n }));
+    };
+    // Cada balão tem um delay ALEATÓRIO (0 a 10s), acumulado sobre o anterior.
+    let acc = 400;
+    for (let i = 0; i < bubbles; i++) {
+      acc += randomDelayMs();
+      timers.push(
+        setTimeout(() => {
+          reveal(i + 1);
+          endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+        }, acc)
+      );
+    }
+    timers.push(
+      setTimeout(() => {
+        lastRevealedIdRef.current = lastAssistant.id;
+        setRevealing(false);
+      }, acc + 100)
+    );
+    return () => timers.forEach(clearTimeout);
   }, [messages, loading]);
 
   const loadMessages = useCallback(async () => {
@@ -157,11 +220,16 @@ export default function Chat() {
         return;
       }
       setMessages([]);
+      setRevealed({});
+      lastRevealedIdRef.current = null;
       setError(null);
     } catch {
       setError("Falha de rede ao resetar a conversa.");
     }
   }
+
+  // ID da última resposta do bot — a única que é revelada balão a balão.
+  const lastAssistantId = [...messages].reverse().find((m) => m.role === "assistant")?.id;
 
   return (
     <div className="relative flex h-dvh w-full flex-col overflow-hidden">
@@ -293,64 +361,94 @@ export default function Chat() {
             </div>
           </div>
         ) : (
-          messages.map((message, index) => (
-            <div
-              key={message.id}
-              className={`flex items-end gap-2.5 ${message.role === "user" ? "justify-end" : "justify-start"}`}
-              style={{ animation: "fadeIn 0.25s ease-out" }}
-            >
-              {message.role === "assistant" && (
-                <img
-                  src="/polli/leves/profile.jpeg"
-                  alt="Foto da Pollianne"
-                  className="mb-1 h-8 w-8 shrink-0 rounded-xl object-cover"
-                />
-              )}
+          messages.map((message, index) => {
+            // Réplica do bot pode vir em vários balões curtos (estilo WhatsApp).
+            const allBubbles =
+              message.role === "assistant" && Array.isArray(message.bubbles) && message.bubbles.length
+                ? message.bubbles
+                : [message.content];
+
+            // Só a resposta MAIS RECENTE é revelada aos poucos; as antigas já aparecem completas.
+            const shown =
+              message.role === "assistant" && message.id === lastAssistantId
+                ? Math.max(0, revealed[message.id] ?? allBubbles.length)
+                : allBubbles.length;
+            const bubbles = allBubbles.slice(0, shown);
+
+            return (
               <div
-                className={`max-w-[78%] whitespace-pre-wrap break-words px-4 py-2.5 text-sm leading-relaxed sm:max-w-[65%] ${
-                  message.role === "user"
-                    ? "rounded-2xl rounded-br-md bg-gradient-to-br from-violet-600 to-fuchsia-600 text-white shadow-lg shadow-violet-600/20"
-                    : index === messages.length - 1
-                      ? "rounded-2xl rounded-bl-md bg-surface text-zinc-800 shadow-sm ring-1 ring-zinc-200/70 dark:text-zinc-100 dark:ring-zinc-700/50"
-                      : "rounded-2xl rounded-bl-md bg-surface text-zinc-800 shadow-sm ring-1 ring-zinc-200/70 dark:text-zinc-100 dark:ring-zinc-700/50"
-                }`}
+                key={message.id}
+                className={`flex flex-col ${message.role === "user" ? "items-end" : "items-start"} gap-1.5`}
+                style={{ animation: "fadeIn 0.25s ease-out" }}
               >
-                {message.content}
-                {message.imageUrl && (
-                  <div className="relative flex justify-center pt-2">
-                    <a
-                      href={message.imageUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      title="Abrir foto em tamanho maior"
-                    >
+                {bubbles.map((bubble, i) => (
+                  <div
+                    key={i}
+                    className={`flex items-end gap-2.5 ${message.role === "user" ? "justify-end" : "justify-start"}`}
+                  >
+                    {message.role === "assistant" && i === bubbles.length - 1 && (
                       <img
-                        src={message.imageUrl}
+                        src="/polli/leves/profile.jpeg"
                         alt="Foto da Pollianne"
-                        className="max-h-72 w-auto max-w-full cursor-pointer rounded-2xl border border-zinc-200/70 object-cover shadow-md transition-transform hover:scale-[1.02] dark:border-zinc-700/50"
+                        className="mb-1 h-8 w-8 shrink-0 rounded-xl object-cover"
                       />
-                    </a>
-                    <span className="absolute bottom-2 right-2 flex items-center gap-1 rounded-full bg-zinc-900/60 px-2 py-1 text-[10px] font-medium text-white backdrop-blur-sm">
-                      <svg viewBox="0 0 24 24" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M15 3h6v6" />
-                        <path d="M10 14 21 3" />
-                        <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
-                      </svg>
-                      abrir
-                    </span>
+                    )}
+                    <div
+                      className={`max-w-[78%] whitespace-pre-wrap break-words px-4 py-2.5 text-sm leading-relaxed sm:max-w-[65%] ${
+                        message.role === "user"
+                          ? "rounded-2xl rounded-br-md bg-gradient-to-br from-violet-600 to-fuchsia-600 text-white shadow-lg shadow-violet-600/20"
+                          : index === messages.length - 1 && i === bubbles.length - 1
+                            ? "rounded-2xl rounded-bl-md bg-surface text-zinc-800 shadow-sm ring-1 ring-zinc-200/70 dark:text-zinc-100 dark:ring-zinc-700/50"
+                            : "rounded-2xl rounded-bl-md bg-surface text-zinc-800 shadow-sm ring-1 ring-zinc-200/70 dark:text-zinc-100 dark:ring-zinc-700/50"
+                      }`}
+                    >
+                      {bubble}
+                    </div>
+                    {message.role === "user" && i === bubbles.length - 1 && (
+                      <div className="mb-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-zinc-200 text-xs font-bold text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">
+                        EU
+                      </div>
+                    )}
+                  </div>
+                ))}
+
+                {message.role === "assistant" && message.imageUrl && (
+                  <div className="flex items-end gap-2.5">
+                    <img
+                      src="/polli/leves/profile.jpeg"
+                      alt="Foto da Pollianne"
+                      className="mb-1 h-8 w-8 shrink-0 rounded-xl object-cover"
+                    />
+                    <div className="relative flex justify-center">
+                      <a
+                        href={message.imageUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        title="Abrir foto em tamanho maior"
+                      >
+                        <img
+                          src={message.imageUrl}
+                          alt="Foto da Pollianne"
+                          className="max-h-72 w-auto max-w-full cursor-pointer rounded-2xl border border-zinc-200/70 object-cover shadow-md transition-transform hover:scale-[1.02] dark:border-zinc-700/50"
+                        />
+                      </a>
+                      <span className="absolute bottom-2 right-2 flex items-center gap-1 rounded-full bg-zinc-900/60 px-2 py-1 text-[10px] font-medium text-white backdrop-blur-sm">
+                        <svg viewBox="0 0 24 24" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M15 3h6v6" />
+                          <path d="M10 14 21 3" />
+                          <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                        </svg>
+                        abrir
+                      </span>
+                    </div>
                   </div>
                 )}
               </div>
-              {message.role === "user" && (
-                <div className="mb-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-zinc-200 text-xs font-bold text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">
-                  EU
-                </div>
-              )}
-            </div>
-          ))
+            );
+          })
         )}
 
-        {loading && (
+        {(loading || revealing) && (
           <div className="flex items-end gap-2.5" style={{ animation: "fadeIn 0.2s ease-out" }}>
             <img
               src="/polli/leves/profile.jpeg"
