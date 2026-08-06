@@ -194,3 +194,23 @@
 - Pedido: `personalidade.md` reescrito pela IA conforme a interação, pra ela se adaptar ao usuário.
 - Mudanças: `ai.ts` (seção `<!-- APRENDIZADO SOBRE O USUÁRIO -->` no final do personalidade.md; `updateLearningFromHistory` roda a cada ≥4 msgs novas e reescreve a seção via IA; `buildLearnedBlock` injeta no system prompt), `chat/route.ts` + `telegram.ts` (chamam o update após cada resposta), `personalidade.md` (seção inicial).
 - Pendência: validar runtime (observar o arquivo sendo atualizado conforme a conversa).
+
+## Sessão 35 — Corrigido loop de redirect 307 no /admin/login
+- Bug: o layout `src/app/admin/layout.tsx` protegia TODOS os filhos de /admin/*, incluindo /admin/login. Sem sessão, redirect(/admin/login) → layout rodava de novo → loop infinito 307.
+- Fix: uso de route group `(panel)`. Proteção movida para `src/app/admin/(panel)/layout.tsx` (envolve só o dashboard). `admin/layout.tsx` agora só renderiza filhos sem exigir sessão.
+- `dashboard/page.tsx` movido para `src/app/admin/(panel)/dashboard/page.tsx` (URL /admin/dashboard se mantém).
+- Build OK (`next build`).
+
+## Sessão 36 — Login admin corrigido (erro silencioso): sessão stateless via HMAC
+- Sintoma: no navegador o login não logava sem erro. Diagnóstico: o GET /admin/dashboard redirecionava 307 para /admin/login mesmo com cookie válido.
+- Causa raiz: `src/lib/auth.ts` guardava sessões em um Map em memória. Em dev, o Next.js compila route handlers e server components em bundles separados, cada um com instância própria do módulo → o login (route handler) gravava o token num Map, o layout do dashboard (server component) lia de outro Map vazio → sessão não encontrada → redirect silencioso.
+- Fix: token stateless assinado com HMAC-SHA256 (`createHmac` + `timingSafeEqual` de `node:crypto`). Sem estado em memória; qualquer bundle valida o cookie de forma independente. Secret via `SESSION_SECRET` (fallback: SENHA_BD_SUPABASE / dev).
+- `createSession` deixou de ser async (call site no login/route.ts ajustado).
+- Reset do mestre: criado `scripts/reset-admin.ts` (deleta e recria `oscar.rodrigues` / senha `175264`).
+- Build OK. Validado: login 200, /admin/dashboard 200, /api/admin/session 200.
+
+## Sessão 37 — Upload de mídia do painel corrigido (405 → 200)
+- Sintoma: upload não funcionava no navegador.
+- Causa: o dashboard/smoke test faziam `POST /api/admin/media`, mas essa rota (`src/app/api/admin/media/route.ts`) só tinha GET e DELETE → retornava 405. O POST estava em `src/app/api/admin/media/upload/route.ts` (caminho divergente `/api/admin/media/upload`).
+- Fix: movido o POST (código do upload) para `media/route.ts`. API agora consistente: GET lista, POST envia, DELETE apaga. Removido `src/app/api/admin/media/upload/`.
+- Build OK. Validado: POST /api/admin/media 200, GET 200, DELETE 200.

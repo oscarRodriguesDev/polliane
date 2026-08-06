@@ -1,0 +1,47 @@
+// Schema do banco Supabase (Postgres) — acessado via Prisma.
+// Dois modelos:
+//   Admin  — usuário mestre do painel (login e troca de senha).
+//   Media  — fotos/vídeos enviados pelo mestre e exibidos pelo bot.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Admin {
+  id           Int      @id @default(autoincrement())
+  username     String   @unique
+  passwordHash String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model Media {
+  id          Int       @id @default(autoincrement())
+  tag         MediaTag // normal | medium | hot_medium | hot
+  type        MediaType // image | video
+  storagePath String    @unique // caminho no bucket (ex.: polli/hot/foto1.jpg)
+  fileUrl     String // URL pública do arquivo
+  mimeType    String
+  sizeBytes   Int
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([tag])
+  @@index([type])
+}
+
+enum MediaTag {
+  normal
+  medium
+  hot_medium
+  hot
+}
+
+enum MediaType {
+  image
+  video
+}

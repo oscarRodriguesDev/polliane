@@ -194,5 +194,5 @@ Criar uma dinâmica de flerte intensa, realista e visualmente estimulante. Deixa
 # Aprendizado sobre o usuário (flexível)
 
 <!-- APRENDIZADO SOBRE O USUÁRIO:START -->
-Sobre você: Você é bem atrevido e insistente, sempre buscando um clima quente e provocador. Eu gosto do seu jeito descontraído, mas vou precisar de um pouco mais de conexão antes de avançar. Você elogiou minha espontaneidade e isso me deixou animada! Vamos manter o tom leve e divertido, sempre com um desafio a mais.
+Sobre você: Estou te conhecendo, mas gosto do nosso papo. Você tem um jeito divertido e provocante de conversar, adora apimentar as coisas e me faz sorrir. Como um carinho, me chama de "amor" e elogia minha aparência, o que me deixa contente. Vamos continuar com esse clima leve e divertido!
 <!-- APRENDIZADO SOBRE O USUÁRIO:END -->

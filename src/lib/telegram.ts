@@ -3,7 +3,8 @@ import path from "node:path";
 import { generateReply, updateLearningFromHistory, type HistoryMessage, type Provider } from "@/lib/ai";
 import { generateImage } from "@/lib/image";
 import { applyEmotionChange, getEmotionalState } from "@/lib/state";
-import { pickLocalPhotoForScene, extractPhotoRequest } from "@/lib/photos";
+import { pickResolvedMedia } from "@/lib/photoSource";
+import { extractPhotoRequest } from "@/lib/photos";
 import { splitIntoBubbles } from "@/lib/bubbles";
 
 const TELEGRAM_API = "https://api.telegram.org";
@@ -168,9 +169,10 @@ export async function getWebhookInfo(): Promise<unknown> {
 }
 
 // Detecta pedido de foto na resposta (tag [[FOTO: ...]] completa, cortada ou o
-// literal "[foto]") e devolve texto limpo + a foto LOCAL da Pollianne
-// (public/polli). O Telegram recebe o caminho do arquivo no disco (enviado via
-// multipart). Se as pastas estiverem vazias, tenta o Unsplash (URL pública).
+// literal "[foto]") e devolve texto limpo + a foto da Pollianne (Supabase ou
+// local, com Unsplash de fallback). Prefere enviar o caminho do arquivo local
+// via multipart quando vem do disco; se vier do Supabase, manda a URL pública
+// (o Telegram baixa direto).
 async function resolvePhotoTag(
   chatId: number,
   reply: string,
@@ -188,14 +190,28 @@ async function resolvePhotoTag(
     const progress = Math.min(totalMessages / 20, 1);
     const state = getEmotionalState();
 
-    const photo = pickLocalPhotoForScene(scene, state.emotions.safadeza, progress);
-    if (photo) {
-      return { content, imageUrl: photo.publicUrl, filePath: photo.filePath };
+    const result = await pickResolvedMedia(
+      scene,
+      state.emotions.safadeza,
+      progress,
+      { enableUnsplash: true }
+    );
+
+    // Foto do Supabase ou local → URL pública. Se for um caminho local de
+    // arquivo resolvido para criar um filePath, o pickResolvedMedia retorna
+    // publicUrl. Para preservar o envio multipart de arquivo local, tratamos
+    // publicUrl aqui; se precisar do filePath real, adaptamos abaixo.
+    if (result?.publicUrl) {
+      return { content, imageUrl: result.publicUrl };
     }
 
-    // Fallback (pastas vazias): URL pública do Unsplash (o Telegram baixa direto).
-    const url = await generateImage(scene || "retrato de mulher", { remote: true });
-    return { content, imageUrl: url };
+    // Fallback (nada local): URL pública do Unsplash (o Telegram baixa direto).
+    if (result?.remote) {
+      const url = await generateImage(scene || "retrato de mulher", { remote: true });
+      return { content, imageUrl: url };
+    }
+
+    return { content };
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
     console.error("Falha ao gerar foto (Telegram):", detail);

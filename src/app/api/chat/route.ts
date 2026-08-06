@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { generateReply, updateLearningFromHistory, type HistoryMessage, type Provider } from "@/lib/ai";
 import { generateImage } from "@/lib/image";
 import { applyEmotionChange, getEmotionalState } from "@/lib/state";
-import { pickLocalPhotoForScene, extractPhotoRequest } from "@/lib/photos";
+import { pickResolvedMedia } from "@/lib/photoSource";
+import { extractPhotoRequest } from "@/lib/photos";
 import { splitIntoBubbles } from "@/lib/bubbles";
 
 export const runtime = "nodejs";
@@ -53,9 +54,9 @@ function addMessage(
 }
 
 // Detecta pedido de foto na resposta (tag [[FOTO: ...]] completa, cortada ou o
-// literal "[foto]") e anexa uma foto LOCAL da Pollianne (public/polli). Se as
-// pastas estiverem vazias, tenta a busca no Unsplash como fallback. Sem pedido
-// de foto, devolve o texto igual.
+// literal "[foto]") e anexa uma foto da Pollianne: primeiro do Supabase (mídias
+// enviadas pelo mestre), depois local (public/polli), e por fim Unsplash.
+// Sem pedido de foto, devolve o texto igual.
 async function resolvePhotoTag(
   reply: string,
   userMessage?: string
@@ -68,19 +69,29 @@ async function resolvePhotoTag(
   const { content, scene } = req;
 
   try {
-    // Progressão: quanto mais mensagens, mais "calor" libera fotos picantes.
+    // Progresso: quanto mais mensagens, mais "calor" libera fotos picantes.
     const totalMessages = getMessages(DEFAULT_CONVERSATION_ID).length;
     const progress = Math.min(totalMessages / 20, 1);
     const state = getEmotionalState();
 
-    const photo = pickLocalPhotoForScene(scene, state.emotions.safadeza, progress);
-    if (photo) {
-      return { content, imageUrl: photo.publicUrl };
+    const result = await pickResolvedMedia(
+      scene,
+      state.emotions.safadeza,
+      progress,
+      { enableUnsplash: true }
+    );
+
+    if (result?.publicUrl) {
+      return { content, imageUrl: result.publicUrl };
     }
 
-    // Fallback (pastas vazias): foto parecida via Unsplash.
-    const url = await generateImage(scene || "retrato de mulher");
-    return { content, imageUrl: url };
+    // Fallback final (nada local): foto parecida via Unsplash.
+    if (result?.remote) {
+      const url = await generateImage(scene || "retrato de mulher");
+      return { content, imageUrl: url };
+    }
+
+    return { content };
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
     console.error("Falha ao gerar foto:", detail);
