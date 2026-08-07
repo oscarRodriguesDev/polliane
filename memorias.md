@@ -355,6 +355,23 @@
 - Reset do mestre: criado `scripts/reset-admin.ts` (deleta e recria `oscar.rodrigues` / senha `175264`).
 - Build OK. Validado: login 200, /admin/dashboard 200, /api/admin/session 200.
 
+## Sessão 39 — Descrição das fotos + fix "digitando" do Telegram
+- Pedido A: descrever/editar a descrição de cada foto (até as já no banco) pra que o bot envie a foto sabendo o que está enviando. Pedida B: corrigir o Telegram onde "digitando" sumia e a mensagem não vinha, às vezes 3 balões de uma vez.
+- **Banco** (`schema.prisma`): `Media` ganhou `description String?`. `prisma db push` aplicado no Supabase (coluna aditiva, nada quebrou). `prisma generate` OK.
+- **API** (`api/admin/media/route.ts`): novo `PATCH /api/admin/media?id=` edita `description` (e opcional `tag`), autenticado, validações.
+- **Painel** (`admin/(panel)/dashboard/page.tsx`): componente `MediaCard` com `textarea` de descrição editável inline + botão Salvar (placeholder explica que o bot usa). Type `Media` ganhou `description`.
+- **Seleção inteligente** (`src/lib/photoSource.ts`):
+  - `pickSupabaseMedia` agora recebe a `scene` e ranqueia as fotos da tag pela descrição que mais bate com a cena (scoring por palavras em comum, stopwords PT/EN). Sem descrição → aleatória (igual antes).
+  - `MediaSourceResult` ganhou `description?`; `pickResolvedMedia` devolve a descrição da foto escolhida.
+  - Resultado: a IA gera a cena `[[FOTO: ...]]`, o bot escolhe a foto da tag cuja descrição coincide → "sabe" o que envia.
+- **Fix Telegram** (`src/lib/telegram.ts`):
+  - Novo `keepTyping(chatId)` que mantém o "digitando..." VIVO reenviando a cada 4s (o indicador do Telegram morre em ~5s) durante a geração da IA e entre balões.
+  - No `processMessage`: `typing.stop()` é chamado exatamente ANTES de cada envio → o digitando some no instante em que a mensagem chega (fluxo de chat normal).
+  - `randomDelayMs()` passou de 0–10s → **2–6s** (0s antes fazia 3 balões caírem juntos).
+  - O try/catch do `processMessage` mantém o `keepTyping` vivo durante todo o processo; stop só no envio.
+- Build OK (`prisma generate && next build`).
+- ⚠️ Validação: descrição no painel + comportamento do Telegram (digitando ↔ mensagem) precisa de teste real.
+
 ## Sessão 38 — Fix build do Vercel (prisma generate entra no ciclo de deploy)
 - Queixa: deploy na Vercel falhava só no `npm run build` (= `next build`). O erro exato: `./prisma/seed.ts:3:10 Type error: Module '"@prisma/client"' has no exported member 'PrismaClient'`.
 - Causa raiz: o `tsconfig.json` inclui `**/*.ts` → o `next build` "type-checking" varre o `prisma/seed.ts`. O `@prisma/client` expõe o `PrismaClient` SÓ depois do `prisma generate` (a `index.d.ts` é um re-export de `node_modules/.prisma/client/default`). Numa instalação limpa da Vercel o client ainda não tinha sido gerado → o tipo não existia → erro de type.

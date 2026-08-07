@@ -27,6 +27,7 @@ model Media {
   fileUrl     String // URL pública do arquivo
   mimeType    String
   sizeBytes   Int
+  description String? // descrição da foto, usada pelo bot pra escolher/enviar sabendo o que é
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 

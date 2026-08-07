@@ -9,10 +9,11 @@ import { splitIntoBubbles } from "@/lib/bubbles";
 
 const TELEGRAM_API = "https://api.telegram.org";
 
-// Delay ALEATÓRIO de 0 a 10 segundos entre o envio de cada balão — parece
-// que a pessoa pensa e digita sem ritmo fixo (menos robótico).
+// Delay ALEATÓRIO entre a geração dos balões — ritmo humano de pensamento.
+// Faixa moderada (2–6s) pra não parecer robôvel nem tão curto que os balões
+// caiam juntos (0s antes fazia até 3 mensagens irem de uma vez).
 function randomDelayMs(): number {
-  return Math.floor(Math.random() * 10000);
+  return Math.floor(2000 + Math.random() * 4000);
 }
 
 function sleep(ms: number): Promise<void> {
@@ -109,6 +110,25 @@ export async function sendTyping(chatId: number): Promise<void> {
   } catch {
     // Se falhar, ignora — é só um indicador visual.
   }
+}
+
+// Mantém o "digitando..." do Telegram ATIVO enquanto uma tarefa assíncrona
+// demora (geração da IA, delay entre balões). O indicador do Telegram morre
+// sozinho em ~5s, então reenviamos a cada ~4s. Retorna uma função pra parar.
+// Importante: chama `stop()` EXATAMENTE antes de enviar a mensagem — aí o
+// "digitando" some no mesmo instante em que a mensagem chega (chat normal).
+function keepTyping(chatId: number): { stop: () => void } {
+  let stopped = false;
+  sendTyping(chatId); // acorda já
+  const timer = setInterval(() => {
+    if (!stopped) sendTyping(chatId);
+  }, 4000);
+  return {
+    stop: () => {
+      stopped = true;
+      clearInterval(timer);
+    },
+  };
 }
 
 // Envia foto (URL pública) com legenda.
@@ -251,7 +271,9 @@ async function processMessage(
   }));
 
   try {
-    await sendTyping(chatId); // "digitando..." enquanto a IA pensa e manda os balões
+    // Mantém o "digitando..." vivo enquanto a IA gera a resposta (o indicador
+    // do Telegram morre em ~5s, então reenviamos a cada 4s).
+    const typing = keepTyping(chatId);
     const reply = await generateReply(history, provider);
     const { content, imageUrl, filePath } = await resolvePhotoTag(chatId, reply, userMessage);
     const bubbles = splitIntoBubbles(content);
@@ -260,9 +282,11 @@ async function processMessage(
     // Personalidade flexível: reescreve o que aprendeu sobre este usuário.
     await updateLearningFromHistory(history, provider);
 
-    // Foto (se houver) sempre vai com o primeiro balão; o resto vira mensagens
-    // soltas, enviadas com um pequeno delay entre si pra não parecer robô.
+    // Envia os balões. Desligamos o typing ANTES de cada envio, para o
+    // "digitando..." sumir no mesmo instante em que a mensagem "chega" —
+    // fluxo de chat normal (sem mensagem sumindo nem 3 de uma vez).
     const [first, ...rest] = bubbles;
+    typing.stop(); // digitando para antes da 1ª mensagem
     if (filePath) {
       await sendPhotoFile(chatId, filePath, first ?? content);
     } else if (imageUrl) {
@@ -271,9 +295,10 @@ async function processMessage(
       await sendText(chatId, first ?? content);
     }
     for (const bubble of rest) {
+      // "pensa" um pouco e relança o digitando até o próximo balão.
+      const wait = keepTyping(chatId);
       await sleep(randomDelayMs());
-      // Reaviva o "digitando..." do Telegram (dura ~5s) antes do próximo balão.
-      await sendTyping(chatId);
+      wait.stop(); // digitando some, a mensagem chega na sequência
       await sendText(chatId, bubble);
     }
   } catch (error) {

@@ -12,6 +12,7 @@ type Media = {
   fileUrl: string;
   mimeType: string;
   sizeBytes: number;
+  description?: string | null;
   createdAt: string;
 };
 
@@ -111,6 +112,20 @@ export default function Dashboard() {
       const d = await res.json().catch(() => ({}));
       alert(d.error ?? "Falha ao excluir.");
     }
+  }
+
+  async function handleSaveDescription(id: number, description: string) {
+    const res = await fetch(`/api/admin/media?id=${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ description }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      alert(data.error ?? "Falha ao salvar descrição.");
+      return false;
+    }
+    return true;
   }
 
   async function handlePassword(e: React.FormEvent) {
@@ -251,20 +266,7 @@ export default function Dashboard() {
 
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
           {visibleMedia(media, filterTag).map((m) => (
-            <div key={m.id} className="relative overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900">
-              {m.type === "image" ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={m.fileUrl} alt={tagLabel[m.tag]} className="aspect-square w-full object-cover" loading="lazy" />
-              ) : (
-                <video src={m.fileUrl} className="aspect-square w-full object-cover" muted playsInline />
-              )}
-              <div className="flex items-center justify-between px-2 py-1.5 text-xs">
-                <span className="rounded bg-pink-600/20 px-1.5 py-0.5 text-pink-300">{tagLabel[m.tag]}</span>
-                <button onClick={() => handleDelete(m.id)} className="text-red-400 hover:text-red-300">
-                  Excluir
-                </button>
-              </div>
-            </div>
+            <MediaCard key={m.id} media={m} onDelete={() => handleDelete(m.id)} onSaveDesc={handleSaveDescription} />
           ))}
         </div>
       </section>
@@ -308,4 +310,71 @@ function visibleCount(media: Media[], filterTag: MediaTag | "all") {
 }
 function visibleMedia(media: Media[], filterTag: MediaTag | "all") {
   return filterTag === "all" ? media : media.filter((m) => m.tag === filterTag);
+}
+
+// Card de mídia com descrição editável inline (o bot usa essa descrição pra
+// saber o que está enviando).
+function MediaCard({
+  media,
+  onDelete,
+  onSaveDesc,
+}: {
+  media: Media;
+  onDelete: () => void;
+  onSaveDesc: (id: number, description: string) => Promise<boolean>;
+}) {
+  const [desc, setDesc] = useState<string>(media.description ?? "");
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  async function handleSave() {
+    setSaving(true);
+    const ok = await onSaveDesc(media.id, desc.trim());
+    setSaving(false);
+    if (ok) {
+      setSaved(true);
+      setTimeout(() => setSaved(false), 1500);
+    }
+  }
+
+  return (
+    <div className="relative overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900">
+      {media.type === "image" ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={media.fileUrl} alt={tagLabel[media.tag]} className="aspect-square w-full object-cover" loading="lazy" />
+      ) : (
+        <video src={media.fileUrl} className="aspect-square w-full object-cover" muted playsInline />
+      )}
+      <div className="px-2 py-1.5">
+        <div className="flex items-center justify-between text-xs">
+          <span className="rounded bg-pink-600/20 px-1.5 py-0.5 text-pink-300">{tagLabel[media.tag]}</span>
+          <button onClick={onDelete} className="text-red-400 hover:text-red-300">
+            Excluir
+          </button>
+        </div>
+        <div className="mt-1.5">
+          <textarea
+            value={desc}
+            onChange={(e) => setDesc(e.target.value)}
+            rows={2}
+            placeholder="Descreva a foto (o bot usa isso pra saber o que envia)"
+            className="w-full resize-none rounded-lg border border-zinc-700 bg-zinc-800 px-2 py-1.5 text-xs text-zinc-200 placeholder:text-zinc-500 focus:border-pink-500 focus:outline-none"
+          />
+          {media.description && desc.trim() === media.description && !saved && (
+            <p className="mt-0.5 text-[10px] text-zinc-500">Salva. Edite pra mudar.</p>
+          )}
+          <div className="mt-1 flex items-center gap-2">
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              className="rounded bg-pink-600 px-2 py-0.5 text-[11px] font-semibold text-white hover:bg-pink-500 disabled:opacity-50"
+            >
+              {saving ? "Salvando..." : "Salvar"}
+            </button>
+            {saved && <span className="text-[11px] text-green-400">Salva! ✓</span>}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 }

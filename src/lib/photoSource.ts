@@ -16,9 +16,9 @@ import type { MediaTag } from "@/lib/media";
 import { pickLocalPhotoForScene, type LocalPhoto } from "@/lib/photos";
 
 export type MediaSourceResult =
-  | { publicUrl: string; filePath?: undefined; remote?: undefined }
-  | { publicUrl?: undefined; filePath: string; remote?: undefined }
-  | { publicUrl?: undefined; filePath?: undefined; remote: true }
+  | { publicUrl: string; filePath?: undefined; remote?: undefined; description?: string }
+  | { publicUrl?: undefined; filePath: string; remote?: undefined; description?: string }
+  | { publicUrl?: undefined; filePath?: undefined; remote: true; description?: string }
   | null;
 
 // Curva de calor -> tag do Supabase (mais ousada conforme conversa esquenta).
@@ -38,20 +38,68 @@ function resolveSupabaseTag(
   return order[Math.min(idx, order.length - 1)];
 }
 
+// Palavras removidas da scoring (conectivos e semântica fraca), em PT e EN.
+const SCORE_STOPWORDS =
+  /[^\p{L}\p{N}]+/u;
+
+// Normaliza e devolve as palavras significativas de uma frase (em minúsculas).
+function words(text: string): string[] {
+  return (text ?? "")
+    .toLowerCase()
+    .split(SCORE_STOPWORDS)
+    .filter(
+      (w) =>
+        w.length > 2 &&
+        ![
+          "pra", "pro", "com", "uma", "uma", "uns", "umas", "ela", "ele", "que",
+          "para", "tem", "estou", "na", "no", "das", "dos", "muito", "mais", "de", "da",
+        ].includes(w)
+    );
+}
+
+// Escore de casamento entre a cena ([[FOTO: ...]]) e a descrição da foto.
+// Quanto mais palavras em comum, maior. Cena vazia → 0 (aleatório).
+function scoreMatch(scene: string, description: string | null | undefined): number {
+  if (!description) return 0;
+  const a = new Set(words(scene));
+  const b = words(description);
+  if (a.size === 0) return 0;
+  let score = 0;
+  for (const w of b) if (a.has(w)) score++;
+  return score;
+}
+
 // Procura uma mídia (foto) no banco/storage do Supabase. Se a tag ideal não
 // tiver nada, desce pra tag com menos ousadia até achar (fallback gradual).
+// Entre as candidatas da tag, ranqueia pela descrição que coincide com a cena
+// (a IA "sabe" o que está mandando e o bot escolhe a foto certa pra cena).
 async function pickSupabaseMedia(
+  scene: string,
   tag: MediaTag
-): Promise<{ fileUrl: string; storagePath: string } | null> {
+): Promise<{ fileUrl: string; storagePath: string; description?: string | null } | null> {
   const order: MediaTag[] = ["normal", "medium", "hot_medium", "hot"];
   const start = order.indexOf(tag);
   for (let i = start; i >= 0; i--) {
     const candidates = await prisma.media.findMany({
       where: { tag: order[i], type: "image" },
-      select: { fileUrl: true, storagePath: true },
+      select: { fileUrl: true, storagePath: true, description: true },
     });
     if (candidates.length === 0) continue;
-    const pick = candidates[Math.floor(Math.random() * candidates.length)];
+
+    // Preferir a foto cuja descrição mais bate com a cena; se ninguém tiver
+    // descrição ou escore empate, escolhe aleatória.
+    let best = candidates;
+    let bestScore = -1;
+    for (const c of candidates) {
+      const s = scoreMatch(scene, c.description);
+      if (s > bestScore) {
+        bestScore = s;
+        best = [c];
+      } else if (s === bestScore) {
+        best.push(c);
+      }
+    }
+    const pick = best[Math.floor(Math.random() * best.length)];
     return pick;
   }
   return null;
@@ -70,10 +118,10 @@ export async function pickResolvedMedia(
     try {
       const tag = resolveSupabaseTag(scene, safadeza, progress);
       if (tag) {
-        const remote = await pickSupabaseMedia(tag);
+        const remote = await pickSupabaseMedia(scene, tag);
         if (remote) {
           // URL pública do bucket (anon já consegue ler).
-          return { publicUrl: remote.fileUrl };
+          return { publicUrl: remote.fileUrl, description: remote.description ?? undefined };
         }
       }
     } catch (e) {

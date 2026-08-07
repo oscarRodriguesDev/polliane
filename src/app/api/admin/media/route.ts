@@ -116,6 +116,56 @@ export async function GET(request: Request): Promise<NextResponse> {
   return NextResponse.json({ media });
 }
 
+// PATCH /api/admin/media?id= — edita metadados da mídia (ex.: description).
+// Body: { description?: string, tag?: MediaTag }
+export async function PATCH(request: Request): Promise<NextResponse> {
+  const store = await cookies();
+  const username = await getCurrentUser(store.get(SESSION_COOKIE)?.value ?? null);
+  if (!username) {
+    return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
+  }
+
+  const { searchParams } = new URL(request.url);
+  const id = Number(searchParams.get("id") ?? "0");
+  if (!id) return NextResponse.json({ error: "id inválido." }, { status: 400 });
+
+  let body: { description?: unknown; tag?: unknown };
+  try {
+    body = (await request.json()) as { description?: unknown; tag?: unknown };
+  } catch {
+    return NextResponse.json({ error: "JSON inválido." }, { status: 400 });
+  }
+
+  const data: { description?: string; tag?: MediaTag } = {};
+  if (body.description !== undefined) {
+    if (typeof body.description !== "string") {
+      return NextResponse.json({ error: "description deve ser string." }, { status: 400 });
+    }
+    data.description = body.description.trim();
+  }
+  if (body.tag !== undefined) {
+    const validTags = MEDIA_TAGS.map((t) => t.value);
+    if (!validTags.includes(body.tag as MediaTag)) {
+      return NextResponse.json(
+        { error: `tag inválida. Use: ${validTags.join(", ")}` },
+        { status: 400 }
+      );
+    }
+    data.tag = body.tag as MediaTag;
+  }
+
+  if (Object.keys(data).length === 0) {
+    return NextResponse.json({ error: "Nada pra atualizar." }, { status: 400 });
+  }
+
+  try {
+    const updated = await prisma.media.update({ where: { id }, data });
+    return NextResponse.json({ ok: true, media: updated });
+  } catch {
+    return NextResponse.json({ error: "Mídia não encontrada." }, { status: 404 });
+  }
+}
+
 // DELETE /api/admin/media?id= — apaga do banco e do storage.
 export async function DELETE(request: Request): Promise<NextResponse> {
   const store = await cookies();

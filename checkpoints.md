@@ -1,5 +1,14 @@
 # Checkpoints
 
+## Sessão 39 — Descrição das fotos + fix "digitando" do Telegram
+
+- Estado: FEITO. `npm run build` OK. `prisma db push` aplicado no Supabase.
+- `Media.description String?` nova coluna (banco atualizado).
+- `PATCH /api/admin/media?id=` edita description/tag. Painel: `MediaCard` com edição inline.
+- `photoSource.pickSupabaseMedia` ranqueia por descrição que coincide com a cena; devolve `description`.
+- Telegram: `keepTyping` segura o digitando vivo; `stop()` antes de cada envio (digitando some ↔ msg chega); delay 2–6s entre balões.
+- Pendência: validar runtime (painel + Telegram).
+
 ## Sessão 38 — Fix build do Vercel (prisma generate no deploy)
 
 - Estado: FEITO. `npm run build` OK (prisma generate + next build).
