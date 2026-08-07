@@ -355,6 +355,12 @@
 - Reset do mestre: criado `scripts/reset-admin.ts` (deleta e recria `oscar.rodrigues` / senha `175264`).
 - Build OK. Validado: login 200, /admin/dashboard 200, /api/admin/session 200.
 
+## Sessão 40 — Painel admin com rolagem própria (removido zoom pra ver tudo)
+- Queixa: no painel admin (upload, trocar senha, ver fotos) não havia rolagem — era preciso diminuir o zoom pra enxergar tudo.
+- Causa raiz: na sessão 12 (chat fixo) o `src/app/layout.tsx` definiu `<body class="flex h-full flex-col overflow-hidden">`. Esse `overflow-hidden` vale GLOBALMENTE para todas as rotas, inclusive o painel admin → conteúdo cortado sem rolar.
+- Fix: não removi o `overflow-hidden` do body (pra não quebrar o chat fixo). Em `src/app/admin/(panel)/layout.tsx` troquei o container de `min-h-screen` por `h-full overflow-y-auto` — o painel agora rola internamente, mesmo com o body travado.
+- Build OK.
+
 ## Sessão 39 — Descrição das fotos + fix "digitando" do Telegram
 - Pedido A: descrever/editar a descrição de cada foto (até as já no banco) pra que o bot envie a foto sabendo o que está enviando. Pedida B: corrigir o Telegram onde "digitando" sumia e a mensagem não vinha, às vezes 3 balões de uma vez.
 - **Banco** (`schema.prisma`): `Media` ganhou `description String?`. `prisma db push` aplicado no Supabase (coluna aditiva, nada quebrou). `prisma generate` OK.

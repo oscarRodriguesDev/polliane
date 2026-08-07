@@ -20,7 +20,7 @@ export default async function AdminPanelLayout({
   }
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-100">
+    <div className="h-full overflow-y-auto bg-zinc-950 text-zinc-100">
       <main>{children}</main>
     </div>
   );

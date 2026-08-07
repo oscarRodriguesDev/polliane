@@ -1,5 +1,12 @@
 # Checkpoints
 
+## Sessão 40 — Painel admin com rolagem própria
+
+- Estado: BUILD OK.
+- Causa: `overflow-hidden` global no body (do chat fixo) cortava o painel admin sem rolar.
+- Fix: `admin/(panel)/layout.tsx` → container `h-full overflow-y-auto` (rola interna, sem quebrar o chat).
+- Pendência: validar runtime (abrir /admin/dashboard no navegador e rolar).
+
 ## Sessão 39 — Descrição das fotos + fix "digitando" do Telegram
 
 - Estado: FEITO. `npm run build` OK. `prisma db push` aplicado no Supabase.
