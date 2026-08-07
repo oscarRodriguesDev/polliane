@@ -355,6 +355,23 @@
 - Reset do mestre: criado `scripts/reset-admin.ts` (deleta e recria `oscar.rodrigues` / senha `175264`).
 - Build OK. Validado: login 200, /admin/dashboard 200, /api/admin/session 200.
 
+## Sessão 41 — Telegram rápido + fotos picantes + bot mais liberal e "sabendo" a descrição
+- Queixas (3): (1) delay do Telegram ~1 min; (2) bot não mostrava fotos picantes, ficava só nas normais; (3) "conquistar primeiro" chato — quer que ela seja mais liberal e tenha DESEJO.
+- **Delay de ~1 min (CAUSA RAIZ)** — `src/lib/telegram.ts`:
+  - O `await updateLearningFromHistory(...)` rodava uma chamada EXTRA de IA (`produceLearning`) ANTES de enviar os balões, bloqueando a resposta em ~30–60s.
+  - Fix: movido pra DEPOIS do envio, como `void updateLearningFromHistory(...)` (em background, sem travar).
+  - `randomDelayMs()` 2–6s → **0.7–1.9s** (ritmo humano curto, sem parecer robô).
+- **Fotos picantes mais cedo**:
+  - `photoSource.resolveSupabaseTag`: curva `heat + 0.25` — `hot` acessível bem antes (antes exigia ~15–20 msgs).
+  - `photos.decideByHeat`: threshold 0.5 → **0.3** (picantes liberadas cedo, safadeza média já libera).
+- **Personalidade mais liberal** (`ai.ts`):
+  - Regras reescritas: "VOCÊ DESEJA DE VERDADE", "LIBERAL SEM FRESCURA", "ESQUENTA COM A QUÍMICA", "FLERTE É MÃO-DUPLA" — removido o jogo de "conquistar primeiro"/frieza.
+  - "PROGRESSÃO DAS FOTOS RELAXADA": picante não precisa de ritual; leve/picante alternam conforme o clima.
+- **Bot lê a descrição da foto** (`telegram.ts` + já no painter):
+  - `pickResolvedMedia`/`resolvePhotoTag` propagam `description`; caption da foto no Telegram agora anexa `_(descrição)_`.
+  - Web chat já retornava a foto; a seleção por descrição (da sessão 39) segue escolhendo a foto certa da cena.
+- Build OK. ⚠️ Validação runtime com o usuário.
+
 ## Sessão 40 — Painel admin com rolagem própria (removido zoom pra ver tudo)
 - Queixa: no painel admin (upload, trocar senha, ver fotos) não havia rolagem — era preciso diminuir o zoom pra enxergar tudo.
 - Causa raiz: na sessão 12 (chat fixo) o `src/app/layout.tsx` definiu `<body class="flex h-full flex-col overflow-hidden">`. Esse `overflow-hidden` vale GLOBALMENTE para todas as rotas, inclusive o painel admin → conteúdo cortado sem rolar.

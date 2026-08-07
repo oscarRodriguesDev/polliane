@@ -33,8 +33,10 @@ function resolveSupabaseTag(
     (Math.min(Math.max(safadeza, 0), 100) / 100) * 0.4 +
     Math.min(Math.max(progress, 0), 1) * 0.6;
 
+  // Curva mais solta: as fotos mais ousadas ficam acessíveis bem antes.
+  // heat>=0.5 já dá "hot" no meio, e com progress baixo as picantes aparecem.
   const order: MediaTag[] = ["normal", "medium", "hot_medium", "hot"];
-  const idx = Math.floor(heat * order.length);
+  const idx = Math.floor((heat + 0.25) * order.length);
   return order[Math.min(idx, order.length - 1)];
 }
 

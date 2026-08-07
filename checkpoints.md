@@ -1,5 +1,14 @@
 # Checkpoints
 
+## Sessão 41 — Telegram rápido + fotos liberadas + personalidade mais liberal
+
+- Estado: BUILD OK.
+- Fix ~1min delay: `updateLearningFromHistory` movido pra depois do envio (void, background); delay balões 2–6s → 0.7–1.9s.
+- Fotos picantes liberadas cedo: `photoSource` heat+0.25; `photos.decideByHeat` threshold 0.5→0.3.
+- Personalidade: regras novas "DESEJA DE VERDADE", "LIBERAL", "ESQUENTA COM QUÍMICA"; fim do "conquistar primeiro".
+- Descrição da foto vai pro caption do Telegram (`_(descrição)_`).
+- Pendência: validar runtime (delay no Telegram, picantes aparecendo, tom mais liberal).
+
 ## Sessão 40 — Painel admin com rolagem própria
 
 - Estado: BUILD OK.

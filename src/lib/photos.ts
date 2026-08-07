@@ -85,9 +85,10 @@ export function resolveKind(scene: string, safadeza: number, progress: number): 
 }
 
 function decideByHeat(safadeza: number, progress: number): PhotoKind {
-  // Progresso pesa mais que safadeza: "com o passar do tempo" é o que manda.
-  const heat = (Math.min(Math.max(safadeza, 0), 100) / 100) * 0.4 + Math.min(Math.max(progress, 0), 1) * 0.6;
-  return heat >= 0.5 ? "picantes" : "leves";
+  // Curve liberada: picante é acessível bem cedo, não precisa de um teste de
+  // resistência. Safadeza média ou poucas mensagens já liberam.
+  const heat = (Math.min(Math.max(safadeza, 0), 100) / 100) * 0.55 + Math.min(Math.max(progress, 0), 1) * 0.45;
+  return heat >= 0.3 ? "picantes" : "leves";
 }
 
 // Sorteia a foto certa pra cena/tag, com fallback pra outra pasta se estiver vazia.

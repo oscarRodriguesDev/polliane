@@ -9,11 +9,11 @@ import { splitIntoBubbles } from "@/lib/bubbles";
 
 const TELEGRAM_API = "https://api.telegram.org";
 
-// Delay ALEATÓRIO entre a geração dos balões — ritmo humano de pensamento.
-// Faixa moderada (2–6s) pra não parecer robôvel nem tão curto que os balões
-// caiam juntos (0s antes fazia até 3 mensagens irem de uma vez).
+// Delay curto e aleatório entre os balões — ritmo humano de pensamento, mas
+// SEM fazer a resposta demorar demais. A demora de ~1 minuto não era esse
+// delay: era a chamada extra de IA (aprendizado) rodando ANTES do envio.
 function randomDelayMs(): number {
-  return Math.floor(2000 + Math.random() * 4000);
+  return Math.floor(700 + Math.random() * 1200);
 }
 
 function sleep(ms: number): Promise<void> {
@@ -197,7 +197,7 @@ async function resolvePhotoTag(
   chatId: number,
   reply: string,
   userMessage?: string
-): Promise<{ content: string; imageUrl?: string; filePath?: string }> {
+): Promise<{ content: string; imageUrl?: string; filePath?: string; description?: string }> {
   const req = extractPhotoRequest(reply, userMessage);
   if (!req) {
     return { content: reply };
@@ -222,7 +222,7 @@ async function resolvePhotoTag(
     // publicUrl. Para preservar o envio multipart de arquivo local, tratamos
     // publicUrl aqui; se precisar do filePath real, adaptamos abaixo.
     if (result?.publicUrl) {
-      return { content, imageUrl: result.publicUrl };
+      return { content, imageUrl: result.publicUrl, description: result.description };
     }
 
     // Fallback (nada local): URL pública do Unsplash (o Telegram baixa direto).
@@ -275,22 +275,24 @@ async function processMessage(
     // do Telegram morre em ~5s, então reenviamos a cada 4s).
     const typing = keepTyping(chatId);
     const reply = await generateReply(history, provider);
-    const { content, imageUrl, filePath } = await resolvePhotoTag(chatId, reply, userMessage);
+    const { content, imageUrl, filePath, description } = await resolvePhotoTag(chatId, reply, userMessage);
     const bubbles = splitIntoBubbles(content);
     addMessage(chatId, "assistant", content, imageUrl, bubbles);
     applyMoodDrift(userMessage, content);
-    // Personalidade flexível: reescreve o que aprendeu sobre este usuário.
-    await updateLearningFromHistory(history, provider);
 
     // Envia os balões. Desligamos o typing ANTES de cada envio, para o
     // "digitando..." sumir no mesmo instante em que a mensagem "chega" —
     // fluxo de chat normal (sem mensagem sumindo nem 3 de uma vez).
     const [first, ...rest] = bubbles;
     typing.stop(); // digitando para antes da 1ª mensagem
+    const caption =
+      imageUrl && description
+        ? `${first ?? content}\n_${description}_`
+        : (first ?? content);
     if (filePath) {
-      await sendPhotoFile(chatId, filePath, first ?? content);
+      await sendPhotoFile(chatId, filePath, caption);
     } else if (imageUrl) {
-      await sendPhoto(chatId, imageUrl, first ?? content);
+      await sendPhoto(chatId, imageUrl, caption);
     } else {
       await sendText(chatId, first ?? content);
     }
@@ -301,6 +303,11 @@ async function processMessage(
       wait.stop(); // digitando some, a mensagem chega na sequência
       await sendText(chatId, bubble);
     }
+
+    // Aprendizado flexível DEPOIS de mandar as mensagens. Antes ele rodava uma
+    // chamada extra de IA (produceLearning) ANTES do envio, esticando a
+    // resposta em ~1 minuto. Agora roda em background, sem travar o usuário.
+    void updateLearningFromHistory(history, provider);
   } catch (error) {
     console.error("Falha ao gerar resposta (Telegram):", error);
     await sendText(chatId, "Dá uma outra chance pra mim? Deixa eu tentar de novo... 😅");
