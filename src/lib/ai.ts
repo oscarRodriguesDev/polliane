@@ -261,7 +261,7 @@ async function buildInspirationBlock(): Promise<string | null> {
   ].join("\n");
 }
 
-export async function buildSystemPrompt(): Promise<string> {
+export async function buildSystemPrompt(chatKey?: string): Promise<string> {
   const personality = readPersonality();
   const parts = [
     "Você é Pollianne Bitencourt, uma mulher de 17 anos que adora conversar.",
@@ -323,7 +323,7 @@ export async function buildSystemPrompt(): Promise<string> {
   parts.push("", buildStateBlock());
 
   // O que a Pollianne já aprendeu sobre a pessoa (personalidade flexível).
-  const learned = buildLearnedBlock();
+  const learned = chatKey ? await buildLearnedBlock(chatKey) : "";
   if (learned) {
     parts.push(learned);
   }
@@ -449,7 +449,8 @@ async function tryOpenRouter(
 
 export async function generateReply(
   history: HistoryMessage[],
-  provider: Provider = "openai"
+  provider: Provider = "openai",
+  chatKey?: string
 ): Promise<string> {
   const openaiKey = process.env.OPENAI_API_KEY ?? process.env.OPENIAI_API_KEY;
   const nvidiaKey = process.env.KEY_NVIDIA;
@@ -464,7 +465,7 @@ export async function generateReply(
   }
 
   const messages: ApiMessage[] = [
-    { role: "system", content: await buildSystemPrompt() },
+    { role: "system", content: await buildSystemPrompt(chatKey) },
     ...history,
   ];
 
@@ -501,66 +502,28 @@ export async function generateReply(
 }
 
 // ---------------------------------------------------------------
-// APRENDIZADO SOBRE O USUÁRIO (personalidade.md flexível)
+// APRENDIZADO SOBRE O USUÁRIO (memória de largo prazo por conversa)
 // ---------------------------------------------------------------
 
 // A personalidade da Pollianne é FLEXÍVEL: conforme ela conversa com a pessoa,
-// ela reescreve a seção "APRENDIZADO SOBRE O USUÁRIO" no final do
-// personalidade.md. Assim ela se adapta ao jeito, gostos e história de cada
-// usuário, ficando "perfeita" pra quem conversa com ela — sem perder a base.
-const LEARNED_START = "<!-- APRENDIZADO SOBRE O USUÁRIO:START -->";
-const LEARNED_END = "<!-- APRENDIZADO SOBRE O USUÁRIO:END -->";
+// ela guarda no banco (ProfileMemory) o que aprendeu sobre o usuário de CADA
+// conversa (web e Telegram). Assim ela se adapta ao jeito, gostos e história da
+// pessoa e NÃO esquece no refresh/cold start (ao contrário do arquivo em disco).
+import { getProfileMemory, setProfileMemory } from "@/lib/history";
 
-// Só re-aprende se houver mensagens novas suficientes desde o último aprendizado
-// (evita gastar tokens reescrevendo a cada fala).
+// Só é usado por histórico para controle de novo aprendizado por conversa.
 const MIN_NEW_MESSAGES_BETWEEN_LEARNS = 4;
-
-type LearnState = { lastMessageCount: number };
-const learnState: LearnState = { lastMessageCount: 0 };
-
-// Lê o que a Pollianne já sabe sobre o usuário (seção no final do .md).
-function readLearnedSection(): string {
-  try {
-    const file = readFileSync(path.join(process.cwd(), "personalidade.md"), "utf-8");
-    const start = file.indexOf(LEARNED_START);
-    const end = file.indexOf(LEARNED_END);
-    if (start === -1 || end === -1 || end <= start) return "";
-    return file.slice(start + LEARNED_START.length, end).trim();
-  } catch {
-    return "";
-  }
-}
-
-// Reescreve a seção de aprendizado no final do personalidade.md, preservando
-// toda a personalidade base (que vem antes).
-function writeLearnedSection(learnedText: string): void {
-  const filePath = path.join(process.cwd(), "personalidade.md");
-  const file = readFileSync(filePath, "utf-8");
-  const block = `${LEARNED_START}\n${learnedText.trim()}\n${LEARNED_END}`;
-
-  const start = file.indexOf(LEARNED_START);
-  const end = file.indexOf(LEARNED_END);
-
-  let updated: string;
-  if (start !== -1 && end !== -1 && end > start) {
-    updated = file.slice(0, start) + block + file.slice(end + LEARNED_END.length);
-  } else {
-    updated = file.trimEnd() + "\n\n# Aprendizado sobre o usuário (flexível)\n\n" + block + "\n";
-  }
-
-  writeFileSync(filePath, updated, "utf-8");
-  personalityCache = null; // força re-leitura na próxima mensagem
-}
+const learnState = new Map<string, number>(); // chatKey -> qtd de msg no último learn
 
 // Prompt usado para a IA refletir sobre a conversa e atualizar o que ela
 // aprendeu sobre a pessoa. Devolve só o conteúdo da seção (texto puro).
-function buildLearningPrompt(history: HistoryMessage[]): ApiMessage[] {
+async function buildLearningPrompt(history: HistoryMessage[], chatKey: string): Promise<ApiMessage[]> {
   const lastMessages = history.slice(-60).map((m) => {
     const who = m.role === "assistant" ? "Pollianne" : "Você";
     return `${who}: ${m.content}`;
   });
 
-  const current = readLearnedSection();
+  const current = (await getProfileMemory(chatKey)) ?? "";
 
   const system =
     "Você é Pollianne Bitencourt, uma mulher de 17 anos. Você está anotando, em PRIMEIRA PESSOA, o que aprendeu " +
@@ -627,14 +590,16 @@ async function produceLearning(
 }
 
 // Analisa o histórico e, se houver conteúdo novo suficiente, reescreve o que a
-// Pollianne aprendeu sobre o usuário no personalidade.md. Deve ser chamado
-// depois de cada troca de mensagem (web e Telegram).
+// Pollianne aprendeu sobre o usuário desta conversa (persistido no banco).
+// Deve ser chamado após cada troca de mensagem (web e Telegram).
 export async function updateLearningFromHistory(
   history: HistoryMessage[],
-  provider: Provider = "openai"
+  provider: Provider = "openai",
+  chatKey?: string
 ): Promise<void> {
   try {
-    const lastCount = learnState.lastMessageCount;
+    if (!chatKey) return;
+    const lastCount = learnState.get(chatKey) ?? 0;
     if (history.length - lastCount < MIN_NEW_MESSAGES_BETWEEN_LEARNS) {
       return;
     }
@@ -643,10 +608,10 @@ export async function updateLearningFromHistory(
     const userCount = history.filter((m) => m.role === "user").length;
     if (userCount < 2) return;
 
-    const learned = await produceLearning(buildLearningPrompt(history), provider);
+    const learned = await produceLearning(await buildLearningPrompt(history, chatKey), provider);
     if (learned && learned.trim().length > 10) {
-      writeLearnedSection(learned.trim());
-      learnState.lastMessageCount = history.length;
+      await setProfileMemory(chatKey, learned.trim());
+      learnState.set(chatKey, history.length);
     }
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
@@ -656,8 +621,8 @@ export async function updateLearningFromHistory(
 
 // Conteúdo aprendido é injetado no system prompt logo após a personalidade,
 // para a Pollianne usar o que sabe sobre a pessoa em cada resposta.
-function buildLearnedBlock(): string {
-  const learned = readLearnedSection();
+async function buildLearnedBlock(chatKey: string): Promise<string> {
+  const learned = (await getProfileMemory(chatKey)) ?? "";
   if (!learned) return "";
   return [
     "",

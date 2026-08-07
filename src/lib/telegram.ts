@@ -6,6 +6,11 @@ import { applyEmotionChange, getEmotionalState } from "@/lib/state";
 import { pickResolvedMedia } from "@/lib/photoSource";
 import { extractPhotoRequest } from "@/lib/photos";
 import { splitIntoBubbles } from "@/lib/bubbles";
+import {
+  getMessages as dbGetMessages,
+  addMessage as dbAddMessage,
+  resetConversation,
+} from "@/lib/history";
 
 const TELEGRAM_API = "https://api.telegram.org";
 
@@ -36,46 +41,6 @@ const providerByChat = new Map<number, Provider>();
 
 function getProvider(chatId: number): Provider {
   return providerByChat.get(chatId) ?? defaultProvider();
-}
-
-// Uma conversa por chat do Telegram (igual à conversa fixa do chat interno,
-// mas com histórico separado por usuário do Telegram).
-type StoredMessage = {
-  id: number;
-  role: "user" | "assistant";
-  content: string;
-  imageUrl?: string;
-  bubbles?: string[];
-  createdAt: string;
-};
-
-const memoryStore = new Map<number, StoredMessage[]>();
-
-function getMessages(chatId: number): StoredMessage[] {
-  if (!memoryStore.has(chatId)) {
-    memoryStore.set(chatId, []);
-  }
-  return memoryStore.get(chatId)!;
-}
-
-function addMessage(
-  chatId: number,
-  role: "user" | "assistant",
-  content: string,
-  imageUrl?: string,
-  bubbles?: string[]
-): StoredMessage {
-  const messages = getMessages(chatId);
-  const message: StoredMessage = {
-    id: messages.length + 1,
-    role,
-    content,
-    imageUrl,
-    bubbles,
-    createdAt: new Date().toISOString(),
-  };
-  messages.push(message);
-  return message;
 }
 
 // Chama um método da Bot API do Telegram.
@@ -206,7 +171,8 @@ async function resolvePhotoTag(
   const { content, scene } = req;
 
   try {
-    const totalMessages = getMessages(chatId).length;
+    const history = await dbGetMessages(String(chatId));
+    const totalMessages = history.length;
     const progress = Math.min(totalMessages / 20, 1);
     const state = getEmotionalState();
 
@@ -263,9 +229,10 @@ async function processMessage(
   userMessage: string,
   provider: Provider
 ): Promise<void> {
-  addMessage(chatId, "user", userMessage);
+  const chatKey = String(chatId);
+  await dbAddMessage(chatKey, "user", userMessage);
 
-  const history: HistoryMessage[] = getMessages(chatId).map((m) => ({
+  const history: HistoryMessage[] = (await dbGetMessages(chatKey)).map((m) => ({
     role: m.role,
     content: m.content,
   }));
@@ -274,10 +241,10 @@ async function processMessage(
     // Mantém o "digitando..." vivo enquanto a IA gera a resposta (o indicador
     // do Telegram morre em ~5s, então reenviamos a cada 4s).
     const typing = keepTyping(chatId);
-    const reply = await generateReply(history, provider);
-    const { content, imageUrl, filePath, description } = await resolvePhotoTag(chatId, reply, userMessage);
+    const reply = await generateReply(history, provider, chatKey);
+    const { content, imageUrl, filePath } = await resolvePhotoTag(chatId, reply, userMessage);
     const bubbles = splitIntoBubbles(content);
-    addMessage(chatId, "assistant", content, imageUrl, bubbles);
+    await dbAddMessage(chatKey, "assistant", content, imageUrl, bubbles);
     applyMoodDrift(userMessage, content);
 
     // Envia os balões. Desligamos o typing ANTES de cada envio, para o
@@ -285,16 +252,13 @@ async function processMessage(
     // fluxo de chat normal (sem mensagem sumindo nem 3 de uma vez).
     const [first, ...rest] = bubbles;
     typing.stop(); // digitando para antes da 1ª mensagem
-    const caption =
-      imageUrl && description
-        ? `${first ?? content}\n_${description}_`
-        : (first ?? content);
+    const caption = first ?? content;
     if (filePath) {
       await sendPhotoFile(chatId, filePath, caption);
     } else if (imageUrl) {
       await sendPhoto(chatId, imageUrl, caption);
     } else {
-      await sendText(chatId, first ?? content);
+      await sendText(chatId, caption);
     }
     for (const bubble of rest) {
       // "pensa" um pouco e relança o digitando até o próximo balão.
@@ -307,7 +271,7 @@ async function processMessage(
     // Aprendizado flexível DEPOIS de mandar as mensagens. Antes ele rodava uma
     // chamada extra de IA (produceLearning) ANTES do envio, esticando a
     // resposta em ~1 minuto. Agora roda em background, sem travar o usuário.
-    void updateLearningFromHistory(history, provider);
+    void updateLearningFromHistory(history, provider, chatKey);
   } catch (error) {
     console.error("Falha ao gerar resposta (Telegram):", error);
     await sendText(chatId, "Dá uma outra chance pra mim? Deixa eu tentar de novo... 😅");
@@ -340,7 +304,7 @@ export async function handleTelegramUpdate(update: {
   }
 
   if (text === "/reset") {
-    memoryStore.set(chatId, []);
+    await resetConversation(String(chatId));
     await sendText(chatId, "Recomeçando do zero, bb... tô pronta de novo. 🥺");
     return true;
   }

@@ -5,53 +5,13 @@ import { applyEmotionChange, getEmotionalState } from "@/lib/state";
 import { pickResolvedMedia } from "@/lib/photoSource";
 import { extractPhotoRequest } from "@/lib/photos";
 import { splitIntoBubbles } from "@/lib/bubbles";
+import { getMessages, addMessage, resetConversation, countMessages } from "@/lib/history";
 
 export const runtime = "nodejs";
 
-// Conversa fixa e persistente em memória (SEM disco).
-// O histórico some quando o servidor reinicia — modo de teste da personalidade.
-const DEFAULT_CONVERSATION_ID = "1";
-
-type StoredMessage = {
-  id: number;
-  conversationId: string;
-  role: "user" | "assistant";
-  content: string;
-  imageUrl?: string;
-  bubbles?: string[];
-  createdAt: string;
-};
-
-// Store em memória: conversaId -> mensagens.
-const memoryStore = new Map<string, StoredMessage[]>();
-
-function getMessages(conversationId: string): StoredMessage[] {
-  if (!memoryStore.has(conversationId)) {
-    memoryStore.set(conversationId, []);
-  }
-  return memoryStore.get(conversationId)!;
-}
-
-function addMessage(
-  conversationId: string,
-  role: "user" | "assistant",
-  content: string,
-  imageUrl?: string,
-  bubbles?: string[]
-): StoredMessage {
-  const messages = getMessages(conversationId);
-  const message: StoredMessage = {
-    id: messages.length + 1,
-    conversationId,
-    role,
-    content,
-    imageUrl,
-    bubbles,
-    createdAt: new Date().toISOString(),
-  };
-  messages.push(message);
-  return message;
-}
+// Conversa do site: uma única chave persistente no Postgres. A Pollianne lembra
+// do histórico mesmo com cold start/deploy (não some mais como no Map antigo).
+const CHAT_KEY = "web";
 
 // Detecta pedido de foto na resposta (tag [[FOTO: ...]] completa, cortada ou o
 // literal "[foto]") e anexa uma foto da Pollianne: primeiro do Supabase (mídias
@@ -70,7 +30,7 @@ async function resolvePhotoTag(
 
   try {
     // Progresso: quanto mais mensagens, mais "calor" libera fotos picantes.
-    const totalMessages = getMessages(DEFAULT_CONVERSATION_ID).length;
+    const totalMessages = await countMessages(CHAT_KEY);
     const progress = Math.min(totalMessages / 20, 1);
     const state = getEmotionalState();
 
@@ -118,15 +78,15 @@ function applyMoodDrift(userMessage: string, assistantReply: string): void {
 }
 
 export async function GET(): Promise<NextResponse> {
-  return NextResponse.json({ messages: getMessages(DEFAULT_CONVERSATION_ID) });
+  return NextResponse.json({ messages: await getMessages(CHAT_KEY) });
 }
 
 // Reset: zera o histórico da conversa — o bot volta à estaca zero, sem memória.
 export async function DELETE(): Promise<NextResponse> {
-  memoryStore.set(DEFAULT_CONVERSATION_ID, []);
+  await resetConversation(CHAT_KEY);
   return NextResponse.json({
     ok: true,
-    messages: getMessages(DEFAULT_CONVERSATION_ID),
+    messages: await getMessages(CHAT_KEY),
   });
 }
 
@@ -153,31 +113,31 @@ export async function POST(request: Request): Promise<NextResponse> {
   const provider: Provider =
     body.provider === "deepseek" ? "deepseek" : body.provider === "grok" ? "grok" : "openai";
 
-  addMessage(DEFAULT_CONVERSATION_ID, "user", message);
+  await addMessage(CHAT_KEY, "user", message);
 
-  const history: HistoryMessage[] = getMessages(DEFAULT_CONVERSATION_ID).map((m) => ({
+  const history: HistoryMessage[] = (await getMessages(CHAT_KEY)).map((m) => ({
     role: m.role,
     content: m.content,
   }));
 
   try {
-    const reply = await generateReply(history, provider);
+    const reply = await generateReply(history, provider, CHAT_KEY);
     const { content, imageUrl } = await resolvePhotoTag(reply, message);
     const bubbles = splitIntoBubbles(content);
-    addMessage(DEFAULT_CONVERSATION_ID, "assistant", content, imageUrl, bubbles);
+    await addMessage(CHAT_KEY, "assistant", content, imageUrl, bubbles);
     applyMoodDrift(message, content);
     // Personalidade flexível: a Pollianne reescreve o que aprendeu sobre a pessoa.
-    await updateLearningFromHistory(history, provider);
+    await updateLearningFromHistory(history, provider, CHAT_KEY);
   } catch (error) {
     console.error("Falha ao gerar resposta da IA:", error);
     return NextResponse.json(
       {
         error: "Não consegui responder agora. Tente novamente em instantes.",
-        messages: getMessages(DEFAULT_CONVERSATION_ID),
+        messages: await getMessages(CHAT_KEY),
       },
       { status: 502 }
     );
   }
 
-  return NextResponse.json({ messages: getMessages(DEFAULT_CONVERSATION_ID) });
+  return NextResponse.json({ messages: await getMessages(CHAT_KEY) });
 }

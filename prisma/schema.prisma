@@ -46,3 +46,25 @@ enum MediaType {
   image
   video
 }
+
+// Histórico de conversa persistido por canal/conversa (web, Telegram, etc.).
+// A conversa NÃO some quando o servidor reinicia — fica no Postgres.
+model ChatMessage {
+  id        Int      @id @default(autoincrement())
+  chatKey   String // "web" pro site, "<telegram_id>" pro Telegram, etc.
+  role      String   // "user" | "assistant"
+  content   String
+  imageUrl  String?
+  bubbles   Json? // balões da mensagem do assistant (lista de strings)
+  createdAt DateTime @default(now())
+
+  @@index([chatKey, id])
+}
+
+// Memória de longo prazo por conversa: o que a Pollianne aprendeu sobre a
+// pessoa (personalidade flexível), persistido no banco (não some no Vercel).
+model ProfileMemory {
+  chatKey   String   @id
+  learned   String? // texto "Sobre você: ..."
+  updatedAt DateTime @updatedAt
+}
