@@ -355,6 +355,16 @@
 - Reset do mestre: criado `scripts/reset-admin.ts` (deleta e recria `oscar.rodrigues` / senha `175264`).
 - Build OK. Validado: login 200, /admin/dashboard 200, /api/admin/session 200.
 
+## Sessão 38 — Fix build do Vercel (prisma generate entra no ciclo de deploy)
+- Queixa: deploy na Vercel falhava só no `npm run build` (= `next build`). O erro exato: `./prisma/seed.ts:3:10 Type error: Module '"@prisma/client"' has no exported member 'PrismaClient'`.
+- Causa raiz: o `tsconfig.json` inclui `**/*.ts` → o `next build` "type-checking" varre o `prisma/seed.ts`. O `@prisma/client` expõe o `PrismaClient` SÓ depois do `prisma generate` (a `index.d.ts` é um re-export de `node_modules/.prisma/client/default`). Numa instalação limpa da Vercel o client ainda não tinha sido gerado → o tipo não existia → erro de type.
+- Fix em `package.json`:
+  - `build`: `"prisma generate && next build"` (garante o client antes do build do Next).
+  - `"postinstall": "prisma generate"` (defesa dupla: roda também no `npm install` do Vercel).
+  - `"db:push": "prisma db push"` (novo helper).
+- Build local OK (`prisma generate` + `next build` passaram).
+- ⚠️ Observação: se o schema do banco precisar ser aplicado no deploy, vai ser preciso rodar também `prisma db push`/`migrate deploy` na Vercel (hoje não está no ciclo; o banco Supabase já deve estar com o schema aplicado). Não alterado para evitar depender de `DIRECT_URL` no ambiente de build.
+
 ## Sessão 37 — Upload de mídia do painel corrigido (405 → 200)
 - Sintoma: upload não funcionava no navegador.
 - Causa: o dashboard/smoke test faziam `POST /api/admin/media`, mas essa rota (`src/app/api/admin/media/route.ts`) só tinha GET e DELETE → retornava 405. O POST estava em `src/app/api/admin/media/upload/route.ts` (caminho divergente `/api/admin/media/upload`).

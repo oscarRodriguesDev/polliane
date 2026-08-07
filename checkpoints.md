@@ -1,5 +1,13 @@
 # Checkpoints
 
+## Sessão 38 — Fix build do Vercel (prisma generate no deploy)
+
+- Estado: FEITO. `npm run build` OK (prisma generate + next build).
+- Erro exato da Vercel: `prisma/seed.ts:3 Module '@prisma/client' has no exported member 'PrismaClient'`.
+- Causa raiz: `tsconfig` inclui `**/*.ts` → type-checking do Next varre `seed.ts`; o client do Prisma só é gerado com `prisma generate` (em instalação limpa da Vercel não existia o tipo).
+- Fix: `package.json` — `build: "prisma generate && next build"`, `postinstall: "prisma generate"`, `db:push` novo.
+- Pendência: se for necessário aplicar o schema no deploy, configurar `prisma db push`/migrate na Vercel (fora do escopo atual).
+
 ## Sessão 1 — Chat Pollianne
 
 - Estado: FEITO. `npx tsc --noEmit` OK, `npm run build` OK.
