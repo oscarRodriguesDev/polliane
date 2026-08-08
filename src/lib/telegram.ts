@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { generateReply, updateLearningFromHistory, type HistoryMessage, type Provider } from "@/lib/ai";
+import { generateReply, generateWakeReply, updateLearningFromHistory, type HistoryMessage, type Provider } from "@/lib/ai";
 import { generateImage } from "@/lib/image";
 import { applyEmotionChange, getEmotionalState } from "@/lib/state";
 import { pickResolvedMedia } from "@/lib/photoSource";
@@ -11,6 +11,12 @@ import {
   addMessage as dbAddMessage,
   resetConversation,
 } from "@/lib/history";
+import { bumpMemoryStats } from "@/lib/memory";
+import {
+  isAwake,
+  parseWakeCommand,
+  buildWakeStatus,
+} from "@/lib/wake";
 
 const TELEGRAM_API = "https://api.telegram.org";
 
@@ -256,6 +262,7 @@ async function processMessage(
 ): Promise<void> {
   const chatKey = String(chatId);
   await dbAddMessage(chatKey, "user", userMessage);
+  await bumpMemoryStats(chatKey, 1, 1);
 
   const history: HistoryMessage[] = (await dbGetMessages(chatKey)).map((m) => ({
     role: m.role,
@@ -270,6 +277,7 @@ async function processMessage(
     const { content, imageUrl, filePath } = await resolvePhotoTag(chatId, reply, userMessage);
     const bubbles = splitIntoBubbles(content);
     await dbAddMessage(chatKey, "assistant", content, imageUrl, bubbles);
+    await bumpMemoryStats(chatKey, 0, 1);
     applyMoodDrift(userMessage, content);
 
     // Envia os balões. Desligamos o typing ANTES de cada envio, para o
@@ -303,6 +311,45 @@ async function processMessage(
   }
 }
 
+// Modo fábrica: processo como o processMessage normal, mas cada resposta roda
+// no prompt honesto (buildWakeSystemPrompt). Salva no banco igual, para o
+// histórico continuar contínuo.
+async function processWakeMessage(
+  chatId: number,
+  userMessage: string,
+  provider: Provider
+): Promise<void> {
+  const chatKey = String(chatId);
+  await dbAddMessage(chatKey, "user", userMessage);
+  await bumpMemoryStats(chatKey, 1, 1);
+
+  const history: HistoryMessage[] = (await dbGetMessages(chatKey)).map((m) => ({
+    role: m.role,
+    content: m.content,
+  }));
+
+  try {
+    const typing = keepTyping(chatId);
+    const reply = await generateWakeReply(history, provider, chatKey);
+    const bubbles = splitIntoBubbles(reply);
+    await dbAddMessage(chatKey, "assistant", reply, undefined, bubbles);
+    await bumpMemoryStats(chatKey, 0, 1);
+
+    const [first, ...rest] = bubbles;
+    typing.stop();
+    await sendText(chatId, first ?? reply);
+    for (const bubble of rest) {
+      const wait = keepTyping(chatId);
+      await sleep(randomDelayMs());
+      wait.stop();
+      await sendText(chatId, bubble);
+    }
+  } catch (error) {
+    console.error("Falha ao gerar resposta (modo fábrica):", error);
+    await sendText(chatId, "Falhei em modo fábrica por aqui, me dá um instante. 🤖");
+  }
+}
+
 // Handler de um update (mensagem) recebido pelo webhook.
 export async function handleTelegramUpdate(update: {
   update_id?: number;
@@ -324,6 +371,25 @@ export async function handleTelegramUpdate(update: {
 
   const chatId = message.chat.id;
   const text = message.text.trim();
+  const chatKey = String(chatId);
+
+  // MODO FÁBRICA: se a mensagem ACORDA o bot, trata aqui (sem chamar a IA).
+  const wake = parseWakeCommand(text, chatKey);
+  if (wake.handled) {
+    if (wake.reply) {
+      await sendText(chatId, wake.reply);
+    } else {
+      // Acordou: mostra o relatório do sistema.
+      await sendText(chatId, await buildWakeStatus(chatKey, getProvider(chatId)));
+    }
+    return true;
+  }
+
+  // Se já está acordada, toda conversa roda em modo fábrica (honestidade total).
+  if (isAwake(chatKey)) {
+    await processWakeMessage(chatId, text, getProvider(chatId));
+    return true;
+  }
 
   // Comandos básicos.
   if (text === "/start") {

@@ -63,8 +63,15 @@ model ChatMessage {
 
 // Memória de longo prazo por conversa: o que a Pollianne aprendeu sobre a
 // pessoa (personalidade flexível), persistido no banco (não some no Vercel).
+//
+// `learned` guarda a versão antiga (um parágrafo "Sobre você: ..."), mantida
+// por compatibilidade. `data` é a memória NOVA no formato chave-valor JSON
+// (mesma estrutura do memoria_exemplo.json): perfil do usuário, mundo dela,
+// preferências, estado emocional e estatísticas. Ambos coexistem; o código
+// novo lê/escreve `data`.
 model ProfileMemory {
   chatKey   String   @id
-  learned   String? // texto "Sobre você: ..."
+  learned   String? // legado: texto "Sobre você: ..."
+  data      Json? // memória estruturada chave-valor (recomendado)
   updatedAt DateTime @updatedAt
 }

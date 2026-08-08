@@ -43,6 +43,10 @@ next-env.d.ts
 # sqlite local (node:sqlite)
 /data/
 
+# memoria em arquivo (chave-valor) — runtime, nunca versionar
+/memoria.json
+/memoria_exemplo.json
+
 # logs locais de dev
 *.log
 !package.json

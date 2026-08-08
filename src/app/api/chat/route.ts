@@ -1,11 +1,13 @@
 import { NextResponse } from "next/server";
-import { generateReply, updateLearningFromHistory, type HistoryMessage, type Provider } from "@/lib/ai";
+import { generateReply, generateWakeReply, updateLearningFromHistory, type HistoryMessage, type Provider } from "@/lib/ai";
 import { generateImage } from "@/lib/image";
 import { applyEmotionChange, getEmotionalState } from "@/lib/state";
 import { pickResolvedMedia } from "@/lib/photoSource";
 import { extractPhotoRequest } from "@/lib/photos";
 import { splitIntoBubbles } from "@/lib/bubbles";
 import { getMessages, addMessage, resetConversation, countMessages } from "@/lib/history";
+import { bumpMemoryStats } from "@/lib/memory";
+import { isAwake, parseWakeCommand, buildWakeStatus } from "@/lib/wake";
 
 export const runtime = "nodejs";
 
@@ -113,7 +115,45 @@ export async function POST(request: Request): Promise<NextResponse> {
   const provider: Provider =
     body.provider === "deepseek" ? "deepseek" : body.provider === "grok" ? "grok" : "openai";
 
+  // MODO FÁBRICA: acordar/dormir, e conversa acordada roda no prompt honesto.
+  const wake = parseWakeCommand(message, CHAT_KEY);
+  if (wake.handled) {
+    // Mantém no histórico pra não quebrar a sequência.
+    if (wake.reply) {
+      const wakeBubbles = splitIntoBubbles(wake.reply);
+      await addMessage(CHAT_KEY, "user", message);
+      await addMessage(CHAT_KEY, "assistant", wake.reply, undefined, wakeBubbles);
+      return NextResponse.json({ messages: await getMessages(CHAT_KEY) });
+    }
+    const status = await buildWakeStatus(CHAT_KEY, provider);
+    const statusBubbles = splitIntoBubbles(status);
+    await addMessage(CHAT_KEY, "user", message);
+    await addMessage(CHAT_KEY, "assistant", status, undefined, statusBubbles);
+    return NextResponse.json({ messages: await getMessages(CHAT_KEY) });
+  }
+
+  if (isAwake(CHAT_KEY)) {
+    await addMessage(CHAT_KEY, "user", message);
+    const hist: HistoryMessage[] = (await getMessages(CHAT_KEY)).map((m) => ({
+      role: m.role,
+      content: m.content,
+    }));
+    try {
+      const reply = await generateWakeReply(hist, provider, CHAT_KEY);
+      const bubbles = splitIntoBubbles(reply);
+      await addMessage(CHAT_KEY, "assistant", reply, undefined, bubbles);
+      return NextResponse.json({ messages: await getMessages(CHAT_KEY) });
+    } catch (error) {
+      console.error("Falha ao gerar resposta (modo fábrica):", error);
+      return NextResponse.json(
+        { error: "Falhei em modo fábrica por aqui. Tenta de novo.", messages: await getMessages(CHAT_KEY) },
+        { status: 502 }
+      );
+    }
+  }
+
   await addMessage(CHAT_KEY, "user", message);
+  await bumpMemoryStats(CHAT_KEY, 1, 1);
 
   const history: HistoryMessage[] = (await getMessages(CHAT_KEY)).map((m) => ({
     role: m.role,
@@ -125,6 +165,7 @@ export async function POST(request: Request): Promise<NextResponse> {
     const { content, imageUrl } = await resolvePhotoTag(reply, message);
     const bubbles = splitIntoBubbles(content);
     await addMessage(CHAT_KEY, "assistant", content, imageUrl, bubbles);
+    await bumpMemoryStats(CHAT_KEY, 0, 1);
     applyMoodDrift(message, content);
     // Personalidade flexível: a Pollianne reescreve o que aprendeu sobre a pessoa.
     await updateLearningFromHistory(history, provider, CHAT_KEY);

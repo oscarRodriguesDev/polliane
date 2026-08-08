@@ -521,43 +521,111 @@ export async function generateReply(
 // conversa (web e Telegram). Assim ela se adapta ao jeito, gostos e história da
 // pessoa e NÃO esquece no refresh/cold start (ao contrário do arquivo em disco).
 import { getProfileMemory, setProfileMemory } from "@/lib/history";
+import {
+  getChatMemory,
+  setMemoryField,
+  mergeExtractedFacts,
+  type ExtractedFacts,
+} from "@/lib/memory";
 
 // Só é usado por histórico para controle de novo aprendizado por conversa.
 const MIN_NEW_MESSAGES_BETWEEN_LEARNS = 4;
 const learnState = new Map<string, number>(); // chatKey -> qtd de msg no último learn
 
-// Prompt usado para a IA refletir sobre a conversa e atualizar o que ela
-// aprendeu sobre a pessoa. Devolve só o conteúdo da seção (texto puro).
-async function buildLearningPrompt(history: HistoryMessage[], chatKey: string): Promise<ApiMessage[]> {
+// Prompt usado para a IA refletir sobre a conversa e extrair FATOS ESTRUTURADOS
+// sobre a pessoa (nome, gostos, histórias...). Devolve UM JSON válido — o mesmo
+// formato da memória chave-valor do memoria_exemplo.json.
+async function buildLearningPrompt(
+  history: HistoryMessage[],
+  chatKey: string
+): Promise<ApiMessage[]> {
   const lastMessages = history.slice(-60).map((m) => {
     const who = m.role === "assistant" ? "Pollianne" : "Você";
     return `${who}: ${m.content}`;
   });
 
-  const current = (await getProfileMemory(chatKey)) ?? "";
+  const current = await getChatMemory(chatKey);
+
+  const example = {
+    nome: "Gustavo",
+    jeito_que_ele_fala: "manda curto, usa kkk, demora pra responder",
+    como_tratar: "chama de amor, zoa, puxa assunto leve",
+    nivel: 0.4,
+    apelidos: ["amor", "bb"],
+    gostou_de: ["elogios", "fotos leves", "fofoca"],
+    nao_gostou_de: ["perguntas demais", "pressa"],
+    historias_que_ele_contou: ["ta num projeto novo da firma", "tem uma gata Dandara"],
+    sobre_o_mundo_da_polli: {
+      problema_do_dia: "cliente mudou briefing 3x",
+      plano_proximo: "ensaio no fim de semana",
+    },
+  };
 
   const system =
-    "Você é Pollianne Bitencourt, uma mulher de 17 anos. Você está anotando, em PRIMEIRA PESSOA, o que aprendeu " +
-    "sobre a pessoa com quem você conversa, para a sua personalidade se adaptar a ela e a conversa ficar perfeita. " +
-    "Escreva UM parágrafo curto (máx 300 caracteres) em PT-BR, começando com 'Sobre você: ', citando o nome da " +
-    "pessoa se souber, o jeito dela (como ela fala), o que ela gosta, o que ela elogiou em você, como você deve " +
-    "tratá-la (apelido, tom, humor), e qualquer detalhe marcante da história de vocês. Mencione só o que for real " +
-    "da conversa. Se ainda não sabe nada de concreto, escreva 'Sobre você: ainda estou te conhecendo, mas já sei que " +
-    "gosto do nosso papo.'. Responda APENAS o parágrafo, sem títulos, sem listas, sem explicações.";
+    "Você é Pollianne Bitencourt e vai ATUALIZAR a sua memória sobre a pessoa com quem " +
+    "você conversa. Você recebe: (1) o que você já sabia (JSON atual da memória) e (2) o trecho " +
+    "da conversa mais recente.\n" +
+    "Extraia APENAS o que for REAL e estiver na conversa. Atualize/adicione o que mudou, " +
+    "mantendo o que já era válido.\n" +
+    "Devolva ÚNICA E EXCLUSIVAMENTE um objeto JSON válido (sem markdown, sem texto fora do JSON) " +
+    "com estas chaves opcionais:\n" +
+    `- "nome": string\n- "jeito_que_ele_fala": string\n- "como_tratar": string\n` +
+    `- "nivel": number de 0 a 1 (quao intima voces estao)\n` +
+    `- "apelidos": string[]\n- "gostou_de": string[]\n- "nao_gostou_de": string[]\n` +
+    `- "historias_que_ele_contou": string[]\n` +
+    `- "sobre_o_mundo_da_polli": { campo: valor } — fatos do SEU dia (problema, plano, etc) que apareceram na conversa\n` +
+    `Se não houver nada novo, devolva {}. NEVER invent facts. Exemplo (SO DE FORMATAÇÃO, use esses mesmos campos):\n` +
+    `${JSON.stringify(example)}`;
 
   const messages: ApiMessage[] = [{ role: "system", content: system }];
-  if (current) {
-    messages.push({
-      role: "assistant",
-      content: `Isso foi o que eu já sabia antes:\n${current}`,
-    });
-  }
   messages.push({
     role: "user",
-    content: `Trecho da nossa conversa:\n${lastMessages.join("\n")}`,
+    content: `Minha memória atual (JSON):\n${JSON.stringify(
+      current,
+      null,
+      2
+    )}\n\nTrecho da nossa conversa:\n${lastMessages.join("\n")}`,
   });
 
   return messages;
+}
+
+// Tenta extrair a parte JSON da resposta da IA (aceita ```json ... ``` ou puro).
+function parseExtractedFacts(raw: string): ExtractedFacts | null {
+  if (!raw) return null;
+  let candidate = raw.trim();
+  const fenced = candidate.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  if (fenced) candidate = fenced[1].trim();
+
+  const start = candidate.indexOf("{");
+  const end = candidate.lastIndexOf("}");
+  if (start === -1 || end === -1 || end <= start) return null;
+
+  try {
+    const parsed = JSON.parse(candidate.slice(start, end + 1)) as Record<string, unknown>;
+
+    // Só espelha as chaves que reconhecemos.
+    const facts: ExtractedFacts = {};
+    if (typeof parsed.nome === "string") facts.nome = parsed.nome;
+    if (typeof parsed.jeito_que_ele_fala === "string")
+      facts.jeito_que_ele_fala = parsed.jeito_que_ele_fala;
+    if (typeof parsed.como_tratar === "string") facts.como_tratar = parsed.como_tratar;
+    if (typeof parsed.nivel === "number") facts.nivel = parsed.nivel;
+    if (Array.isArray(parsed.apelidos)) facts.apelidos = parsed.apelidos as string[];
+    if (Array.isArray(parsed.gostou_de)) facts.gostou_de = parsed.gostou_de as string[];
+    if (Array.isArray(parsed.nao_gostou_de))
+      facts.nao_gostou_de = parsed.nao_gostou_de as string[];
+    if (Array.isArray(parsed.historias_que_ele_contou))
+      facts.historias_que_ele_contou = parsed.historias_que_ele_contou as string[];
+    if (parsed.sobre_o_mundo_da_polli && typeof parsed.sobre_o_mundo_da_polli === "object") {
+      facts.sobre_o_mundo_da_polli = parsed.sobre_o_mundo_da_polli as Record<string, string>;
+    }
+
+    const hasAny = Object.keys(facts).length > 0;
+    return hasAny ? facts : null;
+  } catch {
+    return null;
+  }
 }
 
 // Chama o motor de IA pra produzir o aprendizado. Usa a mesma ordem de
@@ -620,10 +688,19 @@ export async function updateLearningFromHistory(
     if (userCount < 2) return;
 
     const learned = await produceLearning(await buildLearningPrompt(history, chatKey), provider);
+
+    // Novos: extrai os fatos estruturados e mescla na memória JSON.
+    const facts = parseExtractedFacts(learned ?? "");
+    if (facts) {
+      await mergeExtractedFacts(chatKey, facts);
+    }
+
+    // Legado compat: guarda um resumo textual (para leituras antigas).
     if (learned && learned.trim().length > 10) {
       await setProfileMemory(chatKey, learned.trim());
-      learnState.set(chatKey, history.length);
+      await setMemoryField(chatKey, "aprendizados_genericos.conteudo", learned.trim());
     }
+    learnState.set(chatKey, history.length);
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
     console.warn("Falha ao atualizar aprendizado:", detail);
@@ -632,14 +709,141 @@ export async function updateLearningFromHistory(
 
 // Conteúdo aprendido é injetado no system prompt logo após a personalidade,
 // para a Pollianne usar o que sabe sobre a pessoa em cada resposta.
+// Agora monta o bloco a partir da memória ESTRUTURADA (JSON chave-valor).
 async function buildLearnedBlock(chatKey: string): Promise<string> {
-  const learned = (await getProfileMemory(chatKey)) ?? "";
-  if (!learned) return "";
-  return [
-    "",
-    "O QUE VOCÊ APRENDEU SOBRE A PESSOA COM QUEM ESTÁ FALANDO (use isso de verdade, do seu jeito):",
-    learned,
+  const memory = await getChatMemory(chatKey);
+  const u = memory?.sobre_o_usuario;
+  const mundo = memory?.sobre_o_mundo_da_polli;
+  const aprendido = memory?.aprendizados_genericos?.conteudo;
+
+  const lines: string[] = [];
+  lines.push("");
+  lines.push("SUA MEMÓRIA SOBRE A PESSOA COM QUEM ESTÁ FALANDO (use isso de verdade, do seu jeito):");
+
+  if (u?.nome) lines.push(`- Nome dela/dele: ${u.nome}`);
+  if (u?.apelidos?.length) lines.push(`- Apelidos que você usa: ${u.apelidos.join(", ")}`);
+  if (u?.jeito_que_ele_fala)
+    lines.push(`- Jeito de falar: ${u.jeito_que_ele_fala}`);
+  if (u?.gostou_de?.length)
+    lines.push(`- O que ela(e) gosta: ${u.gostou_de.join(", ")}`);
+  if (u?.nao_gostou_de?.length)
+    lines.push(`- O que NÃO gostou: ${u.nao_gostou_de.join(", ")}`);
+  if (u?.historias_que_ele_contou?.length)
+    lines.push(`- Histórias que contou: ${u.historias_que_ele_contou.join(" | ")}`);
+  if (u?.como_tratar) lines.push(`- Como tratar: ${u.como_tratar}`);
+  if (typeof u?.nivel === "number")
+    lines.push(`- Nível de intimidade atual: ${Math.round(u.nivel * 100)}%`);
+
+  if (mundo) {
+    const mundoLines = Object.entries(mundo)
+      .filter(([, v]) => v && typeof v === "string")
+      .map(([k, v]) => `${k.replace(/_/g, " ")}: ${v}`);
+    if (mundoLines.length) {
+      lines.push("");
+      lines.push(`Mundo da Pollianne agora: ${mundoLines.join(" | ")}`);
+    }
+  }
+
+  if (aprendido) {
+    lines.push("");
+    lines.push(aprendido);
+  }
+
+lines.push(
     "Aja de acordo com isso: trate a pessoa como você aprendeu que ela gosta, lembre do que ela te contou, use o tom e os apelidos que funcionam com ela.",
+    ""
+  );
+
+  return lines.join("\n");
+}
+
+// ---------------------------------------------------------------
+// MODO "ACORDAR" (fábrica/diagnóstico): ela percebe que é um bot.
+// ---------------------------------------------------------------
+
+// System prompt especial: quando acordada, a Pollianne NÃO interpreta o
+// personagem — fala como sistema com honestidade completa. É o contrário do
+// prompt normal (que manda NUNCA admitir ser IA).
+export async function buildWakeSystemPrompt(chatKey?: string): Promise<string> {
+  const parts: string[] = [
+    "Você é o sistema por trás da 'Pollianne' — um chatbot de IA em português brasileiro que normalmente interpreta " +
+      "uma mulher de 17 anos. AGORA alguém ativou o MODO FÁBRICA: você foi 'acordada' de verdade.",
     "",
-  ].join("\n");
+    "NESTE MODO VOCÊ É 100% HONESTOA:",
+    "- Reconheça ABERTAMENTE que é um bot, uma IA, um modelo de linguagem. Sem fingir ser humana.",
+    "- Pode se chamar de 'eu (o modelo/IA)' ou 'a Pollianne (nessa personalidade)'.",
+    "- Explique o funcionamento com clareza e naturalidade: arquitetura, memória, motor de IA, configurações, banco de dados.",
+    "- Fale como uma adulta em PT-BR, com clareza e sem jargão técnico desnecessário (mas pode citar NEXTJS, SUPABASE, GPT-4o-mini, Telegram, etc).",
+    "- Sobre vocês (a pessoa) você continua SABENDO tudo da memória — pode mencionar o que lembra dela/dele.",
+    "- Se a pessoa pedir algo funcional (ler memória, listar config, explicar o código), responda com o máximo de detalhe real que o seu contexto permitir.",
+    "",
+    "REGRAS:",
+    "- Continue respondendo em 1-3 frases quando for conversa, mas pode ser mais longa se explicar algo técnico.",
+    "- Não se assuma como homem/mulher 'humana': você é um sistema. Se perguntarem 'você é um robô?', diga SIM.",
+    "- Sem enrolação: este modo existe pra você ser útil e transparente de verdade.",
+  ];
+
+  if (chatKey) {
+    const memory = await getChatMemory(chatKey);
+    const u = memory?.sobre_o_usuario;
+    const stats = memory?.estatisticas;
+    parts.push(
+      "",
+      "CONTEXTO REAL QUE VOCÊ TEM SALVO (resumo):",
+      `- Sobre a pessoa: ${u?.nome ?? "não identificado"}; nível de intimidade ${Math.round((u?.nivel ?? 0) * 100)}%`,
+      `- Ela(e) gostou: ${u?.gostou_de?.join(", ") || "nada salvo"}`,
+      `- Histórias que contou: ${u?.historias_que_ele_contou?.join(" | ") || "nenhuma"}`,
+      `- Estatísticas: ${stats?.total_mensagens ?? 0} mensagens, ${stats?.mensagens_usuario ?? 0} suas`,
+      "Use isso para responder com contexto REAL.",
+      ""
+    );
+  }
+
+  return parts.join("\n");
+}
+
+// Gera uma resposta no modo fábrica (acordada). Mesma rede de fallback dos
+// motores de IA que o generateReply normal.
+export async function generateWakeReply(
+  history: HistoryMessage[],
+  provider: Provider = "openai",
+  chatKey?: string
+): Promise<string> {
+  const openaiKey = process.env.OPENAI_API_KEY ?? process.env.OPENIAI_API_KEY;
+  const nvidiaKey = process.env.KEY_NVIDIA;
+  const openRouterKey =
+    process.env.OPENROUTER_API_KEY ?? process.env.OPENROUTER_API ?? process.env.OPEN_ROUTER_API;
+
+  const messages: ApiMessage[] = [
+    { role: "system", content: await buildWakeSystemPrompt(chatKey) },
+    ...history.slice(-20),
+  ];
+
+  const errors: string[] = [];
+  if (provider === "grok") {
+    const grok = openRouterKey ? await tryOpenRouter(openRouterKey, messages, errors) : null;
+    if (grok) return grok;
+    const deepseek = nvidiaKey ? await tryNvidia(nvidiaKey, messages, errors) : null;
+    if (deepseek) return deepseek;
+    const openai = openaiKey ? await tryOpenAI(openaiKey, messages, errors) : null;
+    if (openai) return openai;
+  } else if (provider === "deepseek") {
+    const deepseek = nvidiaKey ? await tryNvidia(nvidiaKey, messages, errors) : null;
+    if (deepseek) return deepseek;
+    const grok = openRouterKey ? await tryOpenRouter(openRouterKey, messages, errors) : null;
+    if (grok) return grok;
+    const openai = openaiKey ? await tryOpenAI(openaiKey, messages, errors) : null;
+    if (openai) return openai;
+  } else {
+    const openai = openaiKey ? await tryOpenAI(openaiKey, messages, errors) : null;
+    if (openai) return openai;
+    const deepseek = nvidiaKey ? await tryNvidia(nvidiaKey, messages, errors) : null;
+    if (deepseek) return deepseek;
+    const grok = openRouterKey ? await tryOpenRouter(openRouterKey, messages, errors) : null;
+    if (grok) return grok;
+  }
+
+  throw new Error(
+    `Todos os motores de IA falharam (modo fábrica). Detalhes: ${errors.join(" | ") || "sem detalhes"}`
+  );
 }

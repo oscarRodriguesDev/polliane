@@ -75,7 +75,6 @@ export async function resetConversation(chatKey: string): Promise<void> {
   await prisma.chatMessage.deleteMany({ where: { chatKey } });
   await prisma.profileMemory.delete({ where: { chatKey } }).catch(() => {});
 }
-
 // Número de mensagens da conversa (para progressão de fotos/calor).
 export async function countMessages(chatKey: string): Promise<number> {
   return prisma.chatMessage.count({ where: { chatKey } });
@@ -84,12 +83,14 @@ export async function countMessages(chatKey: string): Promise<number> {
 // ---------- Memória de longo prazo (aprendizado sobre o usuário) ----------
 
 // Lê o que a Pollianne aprendeu sobre a pessoa desta conversa.
+// (legado: campo `learned` como texto único — mantido p/ compatibilidade)
 export async function getProfileMemory(chatKey: string): Promise<string | null> {
   const mem = await prisma.profileMemory.findUnique({ where: { chatKey } });
   return mem?.learned ?? null;
 }
 
 // Guarda o aprendizado sobre a pessoa (upsert).
+// (legado: campo `learned` como texto único — mantido p/ compatibilidade)
 export async function setProfileMemory(chatKey: string, learned: string): Promise<void> {
   await prisma.profileMemory.upsert({
     where: { chatKey },
