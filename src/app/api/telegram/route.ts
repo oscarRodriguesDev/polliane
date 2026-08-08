@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import {
   getBotToken,
   setWebhook,
@@ -9,6 +9,11 @@ import {
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+// Garante que a função tenha tempo de sobra (Hobby permite até 60s; depois a
+// 500ms do Telegram não estoura mais). O `after()` resolve: o 200 volta na hora,
+// então o Telegram NÃO reenvia o update — fora o processamento em background.
+export const maxDuration = 60;
 
 // GET é usado para gerenciar o webhook via navegador/curl:
 //   /api/telegram?set=<url-publica>   → registra o webhook
@@ -53,15 +58,21 @@ export async function POST(request: Request): Promise<NextResponse> {
     return NextResponse.json({ ok: false, error: "Payload JSON inválido" }, { status: 400 });
   }
 
-  try {
-    // Normaliza o message (campos opcionais) antes de processar.
-    const normalized = (body ?? {}) as Record<string, unknown>;
-    await handleTelegramUpdate(normalized as never);
-    // Sempre responde 200 ao Telegram, mesmo se ignorou.
-    return NextResponse.json({ ok: true });
-  } catch (error) {
-    const detail = error instanceof Error ? error.message : String(error);
-    console.error("Erro no webhook do Telegram:", detail);
-    return NextResponse.json({ ok: false, error: detail }, { status: 500 });
-  }
+  // Normaliza o message (campos opcionais) antes de processar.
+  const normalized = (body ?? {}) as Record<string, unknown>;
+
+  // Responde 200 IMEDIATAMENTE ao Telegram e processa em background. Isso evita
+  // o retry: o Telegram reenvia o update quando o webhook demora/erro → era isso
+  // que fazia o bot "não parar de falar" (mesma mensagem processada várias vezes).
+  after(async () => {
+    try {
+      await handleTelegramUpdate(normalized as never);
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      console.error("Erro ao processar update (background):", detail);
+    }
+  });
+
+  // Sempre responde 200 ao Telegram, mesmo se ignorou/não processou ainda.
+  return NextResponse.json({ ok: true });
 }

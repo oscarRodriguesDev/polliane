@@ -26,10 +26,10 @@ const SUGGESTIONS = [
   "Me manda uma cantada",
 ];
 
-// Atrasa a aparição de cada balão por um tempo ALEATÓRIO de 0 a 10 segundos,
-// simulando uma pessoa que digita sem ritmo fixo (menos "fake").
+// Atrasa a aparição de cada balão por um tempo ALEATÓRIO curto (0.8 a 2.5s),
+// simulando uma pessoa que digita sem ritmo fixo — mas SEM travar a resposta.
 function randomDelayMs(): number {
-  return Math.floor(Math.random() * 10000);
+  return Math.floor(800 + Math.random() * 1700);
 }
 
 export default function Chat() {

@@ -1,5 +1,18 @@
 # Checkpoints
 
+## Sessão 42 — Bot novo "não para de falar": dedup de updates + sem retry webhook
+
+- Estado: BUILD OK.
+- Queixa: bot novo responde várias vezes/responde demais ("não para de falar").
+- **Causa raiz 1 (msg duplicada)**: `POST /api/telegram` só devolvia 200 DEPOIS de processar tudo. Quando a IA demorava e o webhook estourava timeout, o Telegram REENVIAVA o mesmo `update_id` → mesma mensagem processada/respondida N vezes.
+  - Fix: resposta 200 **imediata** (via `after()` do Next) + processamento em background. E deduplicação por `update_id` (`isDuplicateUpdate` com TTL 10min) em `src/lib/telegram.ts`.
+  - `maxDuration = 60` na rota (telegram/route.ts).
+- **Causa raiz 2 (memória velha):** `personalidade.md` tinha seção `<!-- APRENDIZADO SOBRE O USUÁRIO -->` com conteúdo de conversas antigas; `base.md` tem 130 linhas de diálogo picante injetado como "inspiração" toda resposta.
+  - Fix: seção de aprendizado do `personalidade.md` esvaziada (o banco `ProfileMemory` já estava 0; o bot agora começa do zero de verdade).
+- **Delay do site:** `Chat.tsx` randomDelayMs 0–10s por balão → 0.8–2.5s.
+- Build OK (`prisma generate && next build`).
+- Pendência: validar runtime (Telegram: 1 mensagem → 1 resposta; site: revelação curta). Commit não feito — a critério do usuário.
+
 ## Sessão 41 — Telegram rápido + fotos liberadas + personalidade mais liberal
 
 - Estado: BUILD OK.

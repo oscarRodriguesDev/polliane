@@ -39,6 +39,31 @@ function defaultProvider(): Provider {
 // Provedor escolhido, guardado por chat do Telegram.
 const providerByChat = new Map<number, Provider>();
 
+// Deduplicação de updates: o Telegram pode reentregar o MESMO update_id (retries
+// de rede, timeout do webhook, deploy no meio do processamento). Guardamos os
+// últimos processados pra não responder/enviar duplicado.
+const PROCESSED_TTL_MS = 10 * 60 * 1000; // 10 min (janela de retry do Telegram)
+const processedUpdates = new Map<number, number>(); // update_id -> timestamp
+
+function isDuplicateUpdate(update: { update_id?: number }): boolean {
+  const id = update.update_id;
+  if (typeof id !== "number") return false;
+  const now = Date.now();
+
+  if (processedUpdates.has(id)) {
+    return true; // já vimos esse update → ignora silenciosamente
+  }
+
+  processedUpdates.set(id, now);
+  // Limpeza: remove entradas velhas pra não crescer sem limite.
+  if (processedUpdates.size > 200) {
+    for (const [key, ts] of processedUpdates) {
+      if (now - ts > PROCESSED_TTL_MS) processedUpdates.delete(key);
+    }
+  }
+  return false;
+}
+
 function getProvider(chatId: number): Provider {
   return providerByChat.get(chatId) ?? defaultProvider();
 }
@@ -280,12 +305,18 @@ async function processMessage(
 
 // Handler de um update (mensagem) recebido pelo webhook.
 export async function handleTelegramUpdate(update: {
+  update_id?: number;
   message?: {
     chat?: { id?: number };
     text?: string;
     from?: { first_name?: string };
   };
 }): Promise<boolean> {
+  // Se o Telegram reentregou um update que já processamos, ignora (anti-duplicado).
+  if (isDuplicateUpdate(update)) {
+    return false;
+  }
+
   const message = update.message;
   if (!message?.chat?.id || typeof message.text !== "string") {
     return false; // ignorado (foto, comando não textual, etc.)
