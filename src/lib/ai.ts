@@ -39,24 +39,33 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+// Timeout para TODAS as chamadas de IA: sem isso, um fetch travado segura o
+// webhook até o limite da Vercel (60s) e o bot "digita... e para". 20s é folga
+// (GPT-4o-mini responde em ~1-2s), sobra tempo pra enviar a resposta depois.
+const AI_FETCH_TIMEOUT_MS = 20000;
+
 async function callOpenAI(
   apiKey: string,
   model: string,
   messages: ApiMessage[]
 ): Promise<{ content: string; status: number }> {
-  const response = await fetch(OPENAI_URL, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model,
-      messages,
-      temperature: 0.9,
-      max_tokens: 150,
-    }),
-  });
+  const response = await fetch(
+    OPENAI_URL,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model,
+        messages,
+        temperature: 0.9,
+        max_tokens: 150,
+      }),
+      signal: AbortSignal.timeout(AI_FETCH_TIMEOUT_MS),
+    }
+  );
 
   if (!response.ok) {
     return { content: "", status: response.status };
@@ -84,6 +93,7 @@ async function callModel(
       temperature: 0.9,
       max_tokens: 150,
     }),
+    signal: AbortSignal.timeout(AI_FETCH_TIMEOUT_MS),
   });
 
   if (!response.ok) {
@@ -113,6 +123,7 @@ async function callOpenRouter(
       temperature: 0.9,
       max_tokens: 150,
     }),
+    signal: AbortSignal.timeout(AI_FETCH_TIMEOUT_MS),
   });
 
   if (!response.ok) {
