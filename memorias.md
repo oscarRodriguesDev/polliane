@@ -1,5 +1,17 @@
 # Memórias (VIBECODE)
 
+## Sessão 52 — Funil não simula entrega sem pagamento aprovado (commit ad87899)
+
+- Queixa: "quando o pagamento não é aprovado, em vez de informar que não recebeu, ela simula estar enviando a foto".
+- **Causa raiz**: `advanceFunnelStep` avançava 4→5 a cada mensagem. A etapa 5 instrui "trate como assinante e mostre o conteúdo completo" → sem ter pago, a IA escrevia como quem está enviando as fotos.
+- **Fix** (`src/lib/funnel.ts`):
+  - `advanceFunnelStep` agora para em `FUNNEL_PAYMENT_STEP = 4` (`Math.min(step+1, 4)`). O salto pra 5 só ocorre via `markAsPaid` (webhook Asaas real ou simulador).
+  - `funnelStageInstruction(4)` reforçada: NUNCA já entregou, NUNCA promete envio imediato, NUNCA tag de foto; se a pessoa disser que pagou/mandar comprovante → "aguardando confirmação".
+- **Fix comprovante pendente** (`src/lib/simulate.ts`): `pendingPaymentProofReply(chatKey)` devolve mensagem fixa "Assim que o pagamento for confirmado aqui do meu lado, eu já te mando tudo..." quando o comprovante chega FORA do modo simulação e SEM acesso ativo (null se simulando ou já pago). Sem IA envolvida.
+  - Integrado no web (`chat/route.ts`, +`pendingPaymentProofReply` no import) e Telegram (`telegram.ts`, após o handler de simulação).
+- Teste (script descartado): 3→4 ✓; msg nova na 4 mantém 4 ✓; comprovante pendente interceptado ✓; markAsPaid → 5 ✓; após pago `pendingPaymentProofReply` = null (não intercepta) ✓. Build OK.
+- Commit+push `ad87899` na main.
+
 ## Sessão 51 — QR do PIX via data URL + fala padronizada das fotos picantes (commit 60797f1)
 
 - Queixa 1: "o bot web não exibe o código do QR corretamente" → confirmada a causa raiz: `createPixCharge` escrevia o PNG em `public/pix/pay_*.png` e o web usava `publicUrl=/pix/...`. Em produção (Vercel, serverless) o filesystem é efêmero/read-only → a imagem `data:image/png;base64,...` não depende de arquivo.

@@ -1,5 +1,15 @@
 # Checkpoints
 
+## Sessão 52 — Funil não simula entrega sem pagamento aprovado
+
+- Estado: BUILD OK; commit `ad87899` na main (push feito).
+- Causa: `advanceFunnelStep` avançava da etapa 4 (pagamento) direto pra 5 (assinante) a cada mensagem. A IA da etapa 5 é instruída a "tratar como assinante e mostrar conteúdo" → sem ter pago, ela "simulava" o envio das fotos.
+- Fix 1: `advanceFunnelStep` agora trava em `FUNNEL_PAYMENT_STEP=4`; o salto 4→5 só ocorre via `markAsPaid` (webhook Asaas ou simulador).
+- Fix 2: instrução da etapa 4 reforçada — se a pessoa disser que pagou/mandar comprovante, responder que aguardando confirmação; nunca prometer envio nem tag de foto.
+- Fix 3: `pendingPaymentProofReply` (simulate.ts) — comprovante FORA do modo simulação e sem acesso ativo responde fixo "aguardando confirmação" (sem passar pela IA). Integrado no web e Telegram.
+- Teste: etapa 3→4 ✓; msg nova na 4 mantém 4 ✓; comprovante pendente interceptado ✓; markAsPaid → 5 ✓; pago não intercepta ✓.
+- Pendências: validar runtime no web/TG.
+
 ## Sessão 51 — QR do PIX via data URL + fala padronizada das fotos picantes
 
 - Estado: BUILD OK; commit `60797f1` na main (push feito).
