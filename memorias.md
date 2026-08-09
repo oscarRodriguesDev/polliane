@@ -1,5 +1,18 @@
 # Memórias (VIBECODE)
 
+## Sessão 53 — Kit de divulgação: rastreio de origem + retenção + age-gate (full divulgável)
+
+- Pedido: divulgar o bot com o menor custo possível (Kwai/TikTok/IG/FB). Estratégia do agente de marketing: orgânico ≠0 no TikTok/Kwai, seeding em canais do Telegram (R$ 30–60), CAC ≤ R$ 5, retenção como alavanca de R$ 0. META ads/FB/Google/TikTok Ads = proibidos pro nicho.
+- **Rastreio de origem** (`src/lib/telegram.ts`): `/start` agora aceita payload — `t.me/Pollianne_bot?start=<canal>` chega como `/start <canal>` → grava `evidencias.origem` (1ª = aquisição) e `evidencias.origem_ultima`. Novos campos no tipo `evidencias` (`memory.ts`): `origem`, `origem_ultima`, `funnel_etapa4_desde`, `reativacao_etapa4_enviada`, `renovacao_enviada`.
+- **Etapa 4 marcada** (`src/lib/funnel.ts`): `advanceFunnelStep` ao entrar na etapa 4 grava `evidencias.funnel_etapa4_desde` (base do gatilho de reativação).
+- **Retenção automática** (`src/lib/retencao.ts` + `src/app/api/retencao/route.ts`): job idempotente que varre `ProfileMemory` e dispara (telas do Telegram, chatKey numérica): (1) parou na etapa 4 há 24h+ sem pagar → mensagem fixa de reativação; (2) assinante com acesso vencido (7 dias) → mensagem de renovação. Chamável via `GET /api/retencao?key=<RETENCAO_KEY>` (cron-job.org/Vercel Cron, 12–24h). Flags evitam re-disparo.
+- **Métricas por origem** (`src/app/api/metricas/route.ts`): `GET /api/metricas?key=<RETENCAO_KEY>` agrega por origem: total de contatos, quantos chegaram na etapa 4, quantos pagaram + conversão etapa4→pagamento. Pra matar canal ruim / dobrar canal bom.
+- **Age-gate 18+** (`src/components/AgeGate.tsx` + `page.tsx`): overlay na entrada do site pedindo confirmação de maioridade, salvo em `localStorage("age_ok_18")`. Compliance ECA Digital / verificação etária.
+- **Landing de captura** (`src/app/start/page.tsx`): `/start?src=kwai` — página simples com CTA pro `t.me/Pollianne_bot?start=kwai` (+ aviso 18+/personagem fictícia). Link pra colocar na bio das redes.
+- `.env`: `TELEGRAM_BOT_USERNAME=Pollianne_bot`, `RETENCAO_KEY=ballerini`.
+- Build OK (prisma generate + next build). Rotas novas: `/start`, `/api/retencao`, `/api/metricas`.
+- Pendências: colocar links `?start=kwai/tiktok/...` na bio/seeding; agendar cron (cron-job.org) do `/api/retencao`; definir URL do site na bio como `/start?src=<canal>`.
+
 ## Sessão 52 — Funil não simula entrega sem pagamento aprovado (commit ad87899)
 
 - Queixa: "quando o pagamento não é aprovado, em vez de informar que não recebeu, ela simula estar enviando a foto".

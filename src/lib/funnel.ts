@@ -199,6 +199,15 @@ export async function advanceFunnelStep(
   step: number
 ): Promise<number> {
   const next = Math.min(step + 1, FUNNEL_PAYMENT_STEP);
+  if (step < FUNNEL_PAYMENT_STEP && next === FUNNEL_PAYMENT_STEP) {
+    // Registra quando a pessoa CHEGOU na etapa de pagamento — a retenção
+    // automática usa isso pra reativar quem parou ali sem pagar.
+    await setMemoryField(
+      chatKey,
+      "evidencias.funnel_etapa4_desde",
+      new Date().toISOString()
+    );
+  }
   await updateFunnelStep(chatKey, next);
   return next;
 }

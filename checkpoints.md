@@ -1,5 +1,16 @@
 # Checkpoints
 
+## Sessão 53 — Kit de divulgação low-cost (rastreio, retenção, age-gate, landing)
+
+- Estado: BUILD OK (prisma generate + next build). Rotas novas: `/start`, `/api/retencao`, `/api/metricas`.
+- Rastreio: `/start <canal>` grava `evidencias.origem` (1ª) + `origem_ultima`; link `t.me/Pollianne_bot?start=kwai` → o bot recebe `/start kwai`.
+- Retenção: `GET /api/retencao?key=...` reativa etapa-4-parada (24h+) e vencidos (7d). Idempotente via flags.
+- Métricas: `GET /api/metricas?key=...` agrega por origem (total/etapa4/pagos/conversão).
+- Age-gate 18+ na raiz (`AgeGate.tsx`, localStorage `age_ok_18`).
+- Landing `/start?src=<canal>` com CTA pro bot + aviso 18+.
+- `.env` +`TELEGRAM_BOT_USERNAME` + `RETENCAO_KEY`.
+- Pendências: agendar cron do `/api/retencao` (cron-job.org ou Vercel Cron); usar links rastreados nas bios/seeding; validar `/start?src=` no navegador e `/start kwai` no Telegram.
+
 ## Sessão 52 — Funil não simula entrega sem pagamento aprovado
 
 - Estado: BUILD OK; commit `ad87899` na main (push feito).

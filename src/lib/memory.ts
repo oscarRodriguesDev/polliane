@@ -80,6 +80,16 @@ export type ChatMemory = {
     conteudo_liberado_ate?: string;
     // Modo simulação de pagamento ativo (testes sem pagamento real).
     modo_simulacao?: boolean;
+    // Origem da primeira aquisição (canal que trouxe a pessoa, via ?start=<canal>).
+    origem?: string;
+    // Última origem vista (deep link mais recente).
+    origem_ultima?: string;
+    // Quando a pessoa chegou na etapa 4 do funil (aguardando pagamento) — p/ reativação.
+    funnel_etapa4_desde?: string;
+    // Já enviamos a mensagem de reativação da etapa 4?
+    reativacao_etapa4_enviada?: boolean;
+    // Já enviamos a mensagem de renovação (acesso vencido)?
+    renovacao_enviada?: boolean;
   };
 };
 

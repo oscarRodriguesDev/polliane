@@ -11,7 +11,7 @@ import {
   addMessage as dbAddMessage,
   resetConversation,
 } from "@/lib/history";
-import { bumpMemoryStats, getChatMemory, rememberPhotoSent } from "@/lib/memory";
+import { bumpMemoryStats, getChatMemory, rememberPhotoSent, setMemoryField } from "@/lib/memory";
 import { extractEntregarTag, addRecado, isCasadaComEsteChat, isPicanteScene } from "@/lib/recados";
 import {
   isAwake,
@@ -675,7 +675,21 @@ export async function handleTelegramUpdate(update: {
   }
 
   // Comandos básicos.
-  if (text === "/start") {
+  if (text === "/start" || text.startsWith("/start ")) {
+    // Rastreio de origem: o link de divulgação é
+    //   t.me/Pollianne_bot?start=<canal>  →  o bot recebe "/start <canal>".
+    // Guarda a primeira origem (aquisição) e a última visita; isso alimenta o
+    // ranking de canais (qual Kwai/TikTok/canal do Telegram trouxe mais venda).
+    const payload = text.replace("/start", "").trim();
+    if (payload) {
+      const origem = payload.slice(0, 64);
+      const mem = await getChatMemory(chatKey);
+      if (!mem.evidencias.origem) {
+        await setMemoryField(chatKey, "evidencias.origem", origem);
+      }
+      await setMemoryField(chatKey, "evidencias.origem_ultima", origem);
+    }
+
     // No modo funil o /start JÁ inicia o roteiro: a Polli se apresenta e manda
     // a amostra leve como primeiro contato (etapa 0).
     if (funnelEnabled()) {
