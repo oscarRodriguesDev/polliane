@@ -33,6 +33,7 @@ import {
   isPaymentProof,
   isNewContentRequest,
   handleNewContentRequest,
+  pendingPaymentProofReply,
 } from "@/lib/simulate";
 
 const TELEGRAM_API = "https://api.telegram.org";
@@ -661,6 +662,16 @@ export async function handleTelegramUpdate(update: {
         : `Liberei ${r.entregues} pra você! 💖 (simulação de pagamento concluída)`;
     await sendText(chatId, info);
     return true;
+  }
+
+  // Comprovante FORA do modo simulação e pagamento real ainda não confirmado:
+  // responde fixo "aguardando confirmação" — nunca simula a entrega.
+  if (isPaymentProof(text)) {
+    const pendente = await pendingPaymentProofReply(chatKey);
+    if (pendente) {
+      await sendText(chatId, pendente);
+      return true;
+    }
   }
 
   // Comandos básicos.

@@ -88,6 +88,9 @@ export function funnelStageInstruction(step: number, userName?: string): string 
         "Momento de fechar: anuncie com naturalidade e carinho que vai mandar os dados de pagamento pra pessoa " +
         "liberar o conteúdo completo (o sistema anexa o PIX na hora — você não precisa escrever os dados, apenas puxe o clima). " +
         "Liste o que a pessoa ganha ao apoiar: acesso ao conteúdo completo, fotos e vídeos exclusivos e atenção especial. " +
+        "IMPORTANTE: você ainda NÃO recebeu o pagamento. Se a pessoa disser que pagou ou mandar comprovante, " +
+        "responda que está aguardando a confirmação aqui do seu lado e que entrega assim que o sistema confirmar. " +
+        "NUNCA diga que já liberou, NUNCA prometa envio imediato e NUNCA use tag de foto nesta etapa. " +
         "Seja natural, agradeça por qualquer ajuda e mostre que você vai entregar conteúdo de verdade."
       );
     default:
@@ -188,14 +191,20 @@ export async function getFunnelStep(chatKey: string): Promise<number> {
 }
 
 // Avança a etapa e persiste (só o mínimo — sem guardar perfil da pessoa).
+// A etapa 4 (pagamento) NÃO avança sozinha: ela fica aguardando a confirmação
+// do pagamento (webhook/simulador chamam `markAsPaid`, que pula pra 5).
+// Sem isso, a IA da etapa 5 trata a pessoa como assinante mesmo sem ter pago.
 export async function advanceFunnelStep(
   chatKey: string,
   step: number
 ): Promise<number> {
-  const next = Math.min(step + 1, FUNNEL_FINAL_STEP);
+  const next = Math.min(step + 1, FUNNEL_PAYMENT_STEP);
   await updateFunnelStep(chatKey, next);
   return next;
 }
+
+/** Etapa de pagamento: o funil trava aqui até o pagamento ser confirmado. */
+export const FUNNEL_PAYMENT_STEP = 4;
 
 export async function updateFunnelStep(
   chatKey: string,

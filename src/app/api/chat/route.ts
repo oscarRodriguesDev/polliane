@@ -24,6 +24,7 @@ import {
   isPaymentProof,
   isNewContentRequest,
   handleNewContentRequest,
+  pendingPaymentProofReply,
 } from "@/lib/simulate";
 
 export const runtime = "nodejs";
@@ -255,6 +256,18 @@ export async function POST(request: Request): Promise<NextResponse> {
     await addMessage(CHAT_KEY, "user", message);
     await addMessage(CHAT_KEY, "assistant", reply, undefined, bubbles);
     return NextResponse.json({ messages: await getMessages(CHAT_KEY) });
+  }
+
+  // Comprovante FORA do modo simulação e pagamento real ainda não confirmado:
+  // responde fixo "aguardando confirmação" — nunca simula a entrega via IA.
+  if (isPaymentProof(message)) {
+    const pendente = await pendingPaymentProofReply(CHAT_KEY);
+    if (pendente) {
+      const bubbles = splitIntoBubbles(pendente);
+      await addMessage(CHAT_KEY, "user", message);
+      await addMessage(CHAT_KEY, "assistant", pendente, undefined, bubbles);
+      return NextResponse.json({ messages: await getMessages(CHAT_KEY) });
+    }
   }
 
   // Assinante (pago ou simulado) perguntando se tem conteúdo novo.

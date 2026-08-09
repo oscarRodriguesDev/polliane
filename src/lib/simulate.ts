@@ -42,6 +42,23 @@ export async function isSimulationMode(chatKey: string): Promise<boolean> {
 }
 
 /**
+ * A pessoa mandou "[foto-comprovante]" mas NÃO está em modo simulação e ainda
+ * não é assinante (pagamento real não confirmado). Devolve a mensagem que o
+ * bot deve enviar — fixa, SEM chamar a IA (que "simularia" a entrega).
+ * Devolve null quando NÃO deve interceptar (simulação ativa ou já assinante).
+ */
+export async function pendingPaymentProofReply(
+  chatKey: string
+): Promise<string | null> {
+  if (await isSimulationMode(chatKey)) return null;
+  if (await hasActiveAccess(chatKey)) return null;
+  return (
+    "Assim que o pagamento for confirmado aqui do meu lado, eu já te mando tudo! 💖 " +
+    "Confere se o comprovante bate certinho com o valor e a chave. Qualquer coisa, me chama. 😘"
+  );
+}
+
+/**
  * Ativa o modo simulação. Valida a senha; se ok, reinicia o funil na etapa 0
  * ("o bot faz toda interação" do começo) e confirma.
  * Devolve { ok, reason } — reason preenchido quando falha.
