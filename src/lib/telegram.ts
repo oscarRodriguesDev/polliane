@@ -63,14 +63,12 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-// Caption da foto: texto da resposta + (se existir) a descrição REAL da imagem
-// em itálico, pra o destinatário saber o que veio — e o bot "saber" o que mandou.
-function photoCaption(text: string, description?: string): string {
-  const desc = description?.trim();
-  const len = text.length + (desc ? desc.length + 4 : 0);
+// Caption da foto: só o texto de resposta da Polli, limitado ao máximo do
+// Telegram. A descrição NÃO é anexada — a IA já a transformou em fala natural
+// (sr ex.: "o que achou da minha blusinha preta?").
+function photoCaption(text: string, _description?: string): string {
   const limit = 1024 * 4; // limite do Telegram por caption
-  const base = len > limit ? text.slice(0, Math.max(0, limit - (desc?.length ?? 0))) : text;
-  return desc ? `${base}\n\n_(${desc})_` : base;
+  return text.length > limit ? text.slice(0, limit) : text;
 }
 
 // Token do bot lido do .env (TELEGRAM_BOT_TOKEN).

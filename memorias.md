@@ -1,5 +1,13 @@
 # Memórias (VIBECODE)
 
+## Sessão 46 — Fala natural com a foto (fim da description crua no caption)
+- Queixa: Telegram anexava a descrição literal `_(descrição)_` no caption; usuário quer que ela FALE naturalmente da foto (ex.: "o que achou da minha blusinha preta?") e não descreva.
+- Fix:
+  - `telegram.ts` `photoCaption`: só devolve o texto da resposta (limite de caption), sem colar a description.
+  - `ai.ts` `producePhotoAwareReply`: prompt reformulado — NUNCA cole a descrição; incorpore 1-2 DETALHES VISUAIS numa fala natural e provocante (cita a peça/pose), sem parecer que está relatando a foto.
+- Teste real (openai): "blusinha preta decote" → "olha a minha blusinha preta... 😳 O que você achou?" ✓; "blusinha branca desabotoada" → "essa blusinha branca, o que achou? Não conta pra ninguém, tá? 🥺✨" ✓.
+- Build OK. Validação runtime com o usuário.
+
 ## Sessão 45 — Bot agora "sabe" a descrição da foto que envia (web + Telegram)
 - Queixa: o bot não lia a `Media.description` — enviava a foto mas a resposta não tinha relação com a imagem real.
 - Causa: a foto era escolhida DEPOIS da resposta; a `description` só ia pra memória (`ultima_foto_desc`) e só valia no PRÓXIMO prompt. O texto enviado junto da foto não sabia o quê era.

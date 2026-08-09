@@ -1,5 +1,15 @@
 # Checkpoints
 
+## Sessão 46 — Fala natural com a foto (fim da description crua no caption)
+
+- Estado: BUILD OK.
+- Queixa: caption trazia `_(descrição literal)_`; usuário quer fala natural citando a peça (ex.: "o que achou da minha blusinha preta?").
+- Fix:
+  - `telegram.ts` `photoCaption`: só devolve o texto da resposta (limitada ao teto do Telegram). Descrição NÃO é mais anexada.
+  - `ai.ts` `producePhotoAwareReply`: prompt reforçado — nunca colar a descrição; incorporar 1-2 detalhes visuais numa fala natural e provocante, sem parecer relato.
+- Teste real (openai): blusinha preta → "olha a minha blusinha preta... 😳 O que você achou?" ✓; blusinha branca desabotoada → "essa blusinha branca, o que achou?" ✓.
+- Pendências: validar runtime no Telegram (as duas fotos) e confirmar commit/push das Sessões 44+45+46.
+
 ## Sessão 45 — Bot "sabe" a descrição da foto enviada (web + Telegram)
 
 - Estado: BUILD OK.
