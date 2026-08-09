@@ -7,6 +7,7 @@ import { extractPhotoRequest } from "@/lib/photos";
 import { splitIntoBubbles } from "@/lib/bubbles";
 import { getMessages, addMessage, resetConversation, countMessages } from "@/lib/history";
 import { bumpMemoryStats, getChatMemory, rememberPhotoSent } from "@/lib/memory";
+import { extractEntregarTag, addRecado, isCasadaComEsteChat, isPicanteScene } from "@/lib/recados";
 import { isAwake, parseWakeCommand, buildWakeStatus } from "@/lib/wake";
 
 export const runtime = "nodejs";
@@ -30,6 +31,12 @@ async function resolvePhotoTag(
   }
 
   const { content, scene } = req;
+
+  // Gate do relacionamento: se a Polli está namorando OUTRA pessoa, foto
+  // ousada não sai pra quem não é o par dela — devolve só o texto.
+  if (!(await isCasadaComEsteChat(CHAT_KEY)) && isPicanteScene(scene)) {
+    return { content };
+  }
 
   try {
     // Progresso: quanto mais mensagens, mais "calor" na curva (secundário).
@@ -173,7 +180,21 @@ export async function POST(request: Request): Promise<NextResponse> {
 
   try {
     const reply = await generateReply(history, provider, CHAT_KEY);
-    const { content, imageUrl, description } = await resolvePhotoTag(reply, message);
+
+    // Recados: se a IA marcou a resposta com a tag [[ENTREGAR: ... | ...]],
+    // o sistema limpa a tag do texto e grava o recado na memória global pra
+    // entregar depois pra pessoa certa.
+    const parsed = extractEntregarTag(reply);
+    if (parsed.recado) {
+      const deNome = (await getChatMemory(CHAT_KEY)).sobre_o_usuario.nome;
+      await addRecado({
+        para_nome: parsed.recado.para_nome,
+        texto: parsed.recado.texto,
+        de_nome: deNome ?? `alguém (chat ${CHAT_KEY})`,
+      });
+    }
+
+    const { content, imageUrl, description } = await resolvePhotoTag(parsed.content, message);
     const bubbles = splitIntoBubbles(content);
     await addMessage(CHAT_KEY, "assistant", content, imageUrl, bubbles);
     await bumpMemoryStats(CHAT_KEY, 0, 1);

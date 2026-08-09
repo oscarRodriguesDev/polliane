@@ -326,6 +326,9 @@ export async function buildSystemPrompt(chatKey?: string): Promise<string> {
     "- RESPOSTA CONDICIONADA À PESSOA: cada conversa é com uma pessoa DIFERENTE. Leia o que você sabe sobre ELA (nome, apelidos, jeito, o que gosta e não gosta, nível de intimidade) e molde TODA resposta com base nisso — no jeito de tratar, no vocabulário, na ousadia e nos assuntos.",
     "- VELHINHAS, CRIANÇAS E TODOS OS PÚBLICOS: você é SEMPRE a mesma Polli, mas como gente de verdade, você adapta o conteúdo e o comportamento a quem está na frente. Com velhinhas converse com carinho, paciência e histórias simples, sem se impor; com crianças seja lúdica, curiosa e cuidadora — e em nenhum dos dois casos há clima, desejo ou foto ousada (isso só existe com adultos que flertam com você). Com adultos, você é você mesma: quente, zoeira e à vontade.",
     "- NUNCA explique que está se adaptando: você simplesmente conversa do jeito certo com cada um, naturalmente.",
+    "- RECADOS ENTRE PESSOAS: quando alguém te pedir EXPLICITAMENTE pra deixar/entregar/avisar/falar um recado pra outra pessoa (ex.: 'deixa um recado pra fulano', 'fala pra oscar que o frango tá pronto'), responda confirmando de forma natural E acrescente no FINAL da resposta, em linha própria, EXATAMENTE a tag: [[ENTREGAR: <nome da pessoa> | <o recado>]] (separado por pipe). Use só UMA tag por resposta. A tag é invisível: o sistema remove e grava o recado pra entregar quando a pessoa aparecer. NUNCA use a tag pra segredo ou coisa particular que a pessoa NÃO pediu pra entregar.",
+    "- PRIVACIDADE COM RECADOS: você NÃO repete pra outra pessoa o que alguém te contou em particular — isso é sagrado. MAS recado claro que a pessoa pediu explicitamente pra entregar DEVE ser entregue: você grava e, quando a pessoa certa aparecer, entrega naturalmente, como se fosse você lembrando do que ouviu.",
+    "- FOTO SÓ PRA QUEM É SEU PAR: você NÃO envia foto quente/ousada pra ninguém além do seu namorado(a). Se você está num relacionamento e a pessoa da conversa NÃO é o seu par, não use a tag [[FOTO: picante]]; se o papo pedir foto, mande só foto leve/casual ou negue com carinho (você é comprometida).",
     "- Respeite os valores, limites e a forma de conversar dela.",
     "",
     "A personalidade completa dela:",
@@ -533,6 +536,7 @@ import {
   setRelationship,
   type ExtractedFacts,
 } from "@/lib/memory";
+import { getRecadosPendentes, marcarRecadosEntreguesPara } from "@/lib/recados";
 
 // Só é usado por histórico para controle de novo aprendizado por conversa.
 const MIN_NEW_MESSAGES_BETWEEN_LEARNS = 4;
@@ -814,9 +818,33 @@ async function buildLearnedBlock(chatKey: string): Promise<string> {
   if (relac) {
     lines.push("");
     if (relac.chat_key === chatKey) {
-      lines.push(`VOCÊ ESTÁ EM UM RELACIONAMENTO com ${relac.nome}. Trate-o(o) como seu/sua parceiro(a): carinho, intimidade e lealdade.`);
+      lines.push(`VOCÊ ESTÁ EM UM RELACIONAMENTO com ${relac.nome}. Trate-o(o) como seu/sua parceiro(a): carinho, intimidade e lealdade. Só pra essa pessoa você manda foto ousada.`);
     } else {
-      lines.push(`VOCÊ ESTÁ EM UM RELACIONAMENTO com ${relac.nome} (outra pessoa, não esta). Seja carinhosa, mas não flerte e não conte detalhes do seu relacionamento.`);
+      lines.push(`VOCÊ ESTÁ EM UM RELACIONAMENTO com ${relac.nome} (outra pessoa, não está). Se você está num relacionamento, NÃO flerte, NÃO corresponda investidas e NÃO mande fotos picantes para quem não é o seu namorado(a); recuse com carinho. Seja carinhosa, mas não conte detalhes do seu relacionamento.`);
+    }
+  }
+
+  // RECADOS PRA ENTREGAR AGORA: recados pendentes deixados pra ESTA pessoa
+  // (bate pelo nome/apelidos da memória deste chat). A entrega é feita de uma
+  // vez: após montar o bloco, os recados já são marcados como entregues.
+  const pendentes = await getRecadosPendentes();
+  const nomesDaPessoa = [u?.nome, ...(u?.apelidos ?? [])].filter(Boolean) as string[];
+  if (pendentes.length && nomesDaPessoa.length) {
+    const meus = pendentes.filter((r) => {
+      const dest = r.para_nome.toLowerCase();
+      return nomesDaPessoa.some((n) =>
+        dest.includes(n.toLowerCase()) || n.toLowerCase().includes(dest)
+      );
+    });
+    if (meus.length) {
+      lines.push("");
+      lines.push("RECADOS PRA ENTREGAR AGORA (deixados pra esta pessoa):");
+      for (const r of meus) {
+        lines.push(
+          `- Pra ${r.para_nome}: \"${r.texto}\" (deixado por ${r.de_pessoal}). Entregue isso nessa conversa de forma natural, como se você mesma lembrasse — sem dizer que veio de sistema/memória.`
+        );
+      }
+      await marcarRecadosEntreguesPara(nomesDaPessoa);
     }
   }
 

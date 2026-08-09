@@ -1,5 +1,15 @@
 # Checkpoints
 
+## Sessão 43 — Recados entre pessoas + lealdade de fotos (feature completa)
+
+- Estado: BUILD OK (`prisma generate && next build`).
+- Novo `src/lib/recados.ts`: recados persistidos em `GlobalMemory.data.recados` (sem mudar schema); `extractEntregarTag` + `addRecado` / `getRecadosPendentes` / `marcarRecadosEntreguesPara` / `isCasadaComEsteChat` / `isPicanteScene`.
+- `memory.ts`: campo `recados` no tipo/empty/normalize globais.
+- `ai.ts`: regras de recado e foto-só-para-o-par no prompt; bloco "RECADOS PRA ENTREGAR AGORA" em `buildLearnedBlock` (entrega de uma vez, marcando como entregues) + reforço do relacionamento.
+- `chat/route.ts` e `telegram.ts`: parse da tag → grava recado; gate bloqueia foto picante pra quem não é o namorado.
+- `personalidade.md`: seção "Recados e lealdade".
+- Pendência: validar runtime (web e Telegram) com o usuário — recado do Vitor → chegar pro Oscar/KhAKHA no chat 7861612103.
+
 ## Sessão 42 — Bot novo "não para de falar": dedup de updates + sem retry webhook
 
 - Estado: BUILD OK.

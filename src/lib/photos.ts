@@ -30,7 +30,7 @@ export type LocalPhoto = {
 const EXTENSIONS = new Set([".jpg", ".jpeg", ".png", ".webp", ".gif"]);
 
 // Palavras que indicam foto mais ousada na descrição da tag.
-const PICANTE_WORDS =
+export const PICANTE_WORDS =
   /picante|sensual|lingerie|calcinha|sutiã|sutia|sexy|nua|\bnu\b|quente|provocante|sedut|banho|biquini|safada|tesão|tesao|corpo|peito|bunda|toalha|meia-luz|meia luz|despind|tirando a roupa|de quatro|na cama/i;
 
 // Palavras que indicam foto comum/casual na descrição da tag.

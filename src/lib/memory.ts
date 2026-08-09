@@ -69,6 +69,19 @@ export type GlobalMemory = {
   pessoas_conhecidas: string[];
   relacionamento_atual: { nome: string; chat_key: string } | null;
   fatos_da_vida: Record<string, string>;
+  // Recados deixados pra outras pessoas (pendentes/entregues). Fica dentro do
+  // Json global — sem mudar o schema do banco.
+  recados: Recado[];
+};
+
+// Recado que uma pessoa pediu pra entregar pra outra.
+export type Recado = {
+  id: string;
+  para_nome: string; // nome/apelido do destinatário
+  texto: string; // o conteúdo do recado
+  de_pessoal: string; // quem deixou o recado
+  criado_em: string;
+  entregue: boolean;
 };
 
 export function emptyMemory(): ChatMemory {
@@ -102,6 +115,7 @@ export function emptyGlobalMemory(): GlobalMemory {
     pessoas_conhecidas: [],
     relacionamento_atual: null,
     fatos_da_vida: {},
+    recados: [],
   };
 }
 
@@ -153,6 +167,19 @@ export function normalizeGlobalMemory(raw: unknown): GlobalMemory {
     relacionamento_atual: r.relacionamento_atual ?? null,
     fatos_da_vida:
       r.fatos_da_vida && typeof r.fatos_da_vida === "object" ? r.fatos_da_vida : {},
+    // Só aceita recados que parecem válidos (descarta lixo do Json antigo).
+    recados: Array.isArray(r.recados)
+      ? (r.recados as unknown[]).filter(
+          (x): x is Recado =>
+            !!x &&
+            typeof x === "object" &&
+            typeof (x as Recado).id === "string" &&
+            typeof (x as Recado).para_nome === "string" &&
+            typeof (x as Recado).texto === "string" &&
+            typeof (x as Recado).de_pessoal === "string" &&
+            typeof (x as Recado).criado_em === "string"
+        )
+      : [],
   };
 }
 

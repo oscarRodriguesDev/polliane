@@ -12,6 +12,7 @@ import {
   resetConversation,
 } from "@/lib/history";
 import { bumpMemoryStats, getChatMemory, rememberPhotoSent } from "@/lib/memory";
+import { extractEntregarTag, addRecado, isCasadaComEsteChat, isPicanteScene } from "@/lib/recados";
 import {
   isAwake,
   parseWakeCommand,
@@ -202,6 +203,12 @@ async function resolvePhotoTag(
 
   const { content, scene } = req;
 
+  // Gate do relacionamento: se a Polli está namorando OUTRA pessoa, foto
+  // ousada não sai pra quem não é o par dela — devolve só o texto.
+  if (!(await isCasadaComEsteChat(String(chatId))) && isPicanteScene(scene)) {
+    return { content };
+  }
+
   try {
     const history = await dbGetMessages(String(chatId));
     const totalMessages = history.length;
@@ -276,7 +283,21 @@ async function processMessage(
     // do Telegram morre em ~5s, então reenviamos a cada 4s).
     const typing = keepTyping(chatId);
     const reply = await generateReply(history, provider, chatKey);
-    const { content, imageUrl, filePath, description } = await resolvePhotoTag(chatId, reply, userMessage);
+
+    // Recados: se a IA marcou a resposta com a tag [[ENTREGAR: ... | ...]],
+    // o sistema limpa a tag do texto e grava o recado na memória global pra
+    // entregar depois pra pessoa certa.
+    const parsed = extractEntregarTag(reply);
+    if (parsed.recado) {
+      const deNome = (await getChatMemory(chatKey)).sobre_o_usuario.nome;
+      await addRecado({
+        para_nome: parsed.recado.para_nome,
+        texto: parsed.recado.texto,
+        de_nome: deNome ?? `alguém (chat ${chatKey})`,
+      });
+    }
+
+    const { content, imageUrl, filePath, description } = await resolvePhotoTag(chatId, parsed.content, userMessage);
     const bubbles = splitIntoBubbles(content);
     await dbAddMessage(chatKey, "assistant", content, imageUrl, bubbles);
     await bumpMemoryStats(chatKey, 0, 1);

@@ -410,3 +410,18 @@
 - Causa: o dashboard/smoke test faziam `POST /api/admin/media`, mas essa rota (`src/app/api/admin/media/route.ts`) só tinha GET e DELETE → retornava 405. O POST estava em `src/app/api/admin/media/upload/route.ts` (caminho divergente `/api/admin/media/upload`).
 - Fix: movido o POST (código do upload) para `media/route.ts`. API agora consistente: GET lista, POST envia, DELETE apaga. Removido `src/app/api/admin/media/upload/`.
 - Build OK. Validado: POST /api/admin/media 200, GET 200, DELETE 200.
+
+## Sessão 43 — Recados entre pessoas (tag ENTREGAR) + lealdade no namoro
+- Queixa: pedidos de recado ("fala pra oscar que o frango tá pronto") eram respondidos mas nada era gravado/entregue.
+- Criado `src/lib/recados.ts`:
+  - Persistência DENTRO do `GlobalMemory.data.recados` (chatKey `_global`) — sem mudar schema.
+  - `addRecado`, `getRecadosPendentes`, `marcarRecadoEntregue`, `marcarRecadosEntreguesPara` (match parcial case-insensitive com nome/apelidos), cap 200.
+  - `extractEntregarTag(reply)` (regex `\[\[ENTREGAR:\s*([^\]|]+)\|([^\]]+)\]\]`) → limpa tag e devolve `{para_nome, texto}`.
+  - `isCasadaComEsteChat(chatKey)` (namorando outra pessoa → false) e `isPicanteScene`.
+- `memory.ts`: `GlobalMemory.recados: Recado[]`; `emptyGlobalMemory` inicializa `[]`; `normalizeGlobalMemory` filtra inválidos.
+- `ai.ts`:
+  - `buildSystemPrompt`: regras RECADOS ENTRE PESSOAS (tag `[[ENTREGAR]]` no fim, uma por resposta, nunca pra segredo), PRIVACIDADE COM RECADOS, FOTO SÓ PRA QUEM É SEU PAR.
+  - `buildLearnedBlock`: bloco "RECADOS PRA ENTREGAR AGORA" (injeta pendentes que batem com nome/apelidos do chat e marca entregue de uma vez); reforço da regra de relacionamento (não flertar / não mandar foto / recusar com carinho).
+- `chat/route.ts` e `telegram.ts`: após `generateReply`, `extractEntregarTag` → `addRecado` (nome do remetente da memória) → `resolvePhotoTag` com texto limpo. Gate: se namorando outra pessoa e cena picante → devolve só texto (sem foto).
+- `personalidade.md`: seção "Recados e lealdade".
+- Build OK (`prisma generate && next build`).
