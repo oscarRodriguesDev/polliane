@@ -1,34 +1,28 @@
 # Memórias (VIBECODE)
 
-## Sessão 49 — Pagamento PIX via Asaas (etapa 4 do funil gera QR real)
-- Pedido: substituir o texto estático de pagamento por cobrança PIX real + liberar o conteúdo quando o pagamento for confirmado.
-- Novo `src/lib/asaas.ts`: cliente Asaas v3 (produção por padrão; `ASAAS_SANDBOX=true` muda pra sandbox). Funções: `createPixCharge` (cria customer por chatKey como externalReference, cobrança PIX com `ASAAS_PIX_VALUE` default 49.90, salva QR PNG em `public/pix/<paymentId>.png`, devolve copia-e-cola), `getPaymentStatus`, `isPaidStatus`, `isPaidEvent`, `asaasConfigured`.
-- CPF/CNPJ obrigatório no Asaas pra cobrança PIX: lido de `ASAAS_CNPJ` (fallback `ASAAS_CUSTOMER_CPF`); customer existente sem CNPJ é corrigido via PATCH (mandatório).
+## Sessão 49 — Pagamento PIX Asaas + liberação em massa + simulador (testes)
 
-### Webhook `src/app/api/asaas/webhook/route.ts`
-- Recebe eventos do Asaas, valida token opcional (`ASAAS_WEBHOOK_KEY` via `?token=` ou header `x-asaas-key`).
-- **Validação dupla**: mesmo com evento `PAYMENT_*`, consulta `getPaymentStatus` na API antes de liberar (payload fake não libera nada).
-- Se pago e `externalReference` (= chatKey) existir → `markAsPaid`: salva `evidencias.assinante=true` e pula `funnel_step` pra 5 (fim/assinante).
+### Pagamento PIX (Asaas)
+- Novo `src/lib/asaas.ts`: cliente Asaas v3 (produção; `ASAAS_SANDBOX=true` p/ sandbox). `createPixCharge` (customer por chatKey, cobrança PIX `ASAAS_PIX_VALUE` default 49.90, QR PNG em `public/pix/`, copia-e-cola), `getPaymentStatus`, `isPaidStatus`, `isPaidEvent`.
+- CNPJ obrigatório: `ASAAS_CNPJ` (fallback `ASAAS_CUSTOMER_CPF`); customer sem CNPJ é corrigido via PATCH.
+- Webhook `src/app/api/asaas/webhook/route.ts`: token opcional (`ASAAS_WEBHOOK_KEY` via `?token=` ou `x-asaas-key`) + VALIDAÇÃO DUPLA (consulta a API antes de liberar). Libera via `markAsPaid` e dispara entrega em massa via `waitUntil` (não morre no freeze da Vercel).
+- Etapa 4 do funil (web + TG) gera o PIX real via `buildPaymentPayload`; reusa a mesma cobrança; fallback `paymentInfo()`.
 
-### Etapa 4 no funil (web + Telegram)
-- `buildPaymentPayload(chatKey)` (novo em `funnel.ts`): usa o Asaas pra gerar cobrança; guarda `evidencias.pix_payment_id`, `pix_text`, `pix_file_path`, `pix_public_url`, `pix_copy`. Reusa a MESMA cobrança (não duplica). Se Asaas off/falhar → fallback `paymentInfo()`.
-- `chat/route.ts`: na etapa 4 anexa o texto do PIX e usa `publicUrl` (`/pix/<id>.png`) como imagem da mensagem.
-- `telegram.ts`: na etapa 4 envia o QR via `sendPhotoFile(filePath)` (multipart) com caption + texto da chave copia-e-cola.
-- Instrução da etapa 4 ajustada: a IA só anuncia o pagamento; o SISTEMA anexa o PIX (não é mais texto estático).
-- Teste real (produção): customer criado, cobrança `PENDING`, QR PNG salvo, `getPaymentStatus`, `markAsPaid` → `assinante=true` + step 5. Build OK.
-- `.env` novos: `ASAAS_API_KEY`, `ASAAS_CNPJ`, `ASAAS_PIX_VALUE` (opcional), `ASAAS_WEBHOOK_KEY` (opcional), `ASAAS_SANDBOX` (opcional).
-- Pendência: cadastrar webhook no painel Asaas apontando pra `/api/asaas/webhook`.
+### Liberação em massa (pós-pagamento)
+- `src/lib/deliver.ts deliverAllContent(chatKey)`: coleta TODAS as fotos (Supabase 1ª — 21 imagens; local `public/polli` fallback — 8), envia uma a uma:
+  - Telegram (chatKey numérica): `sendPhotoFile`/`sendPhoto` + abertura/encerramento carinhosos; delay 350ms.
+  - Web ("web"): grava no histórico (aparece no polling).
+  - Idempotente via `evidencias.conteudo_entregue`.
+- `Chat.tsx`: polling leve de 8s pro web detectar liberação sem recarregar.
 
-### Liberação automática do conteúdo pós-pagamento (entrega em massa)
-- Pedido: quando o pagamento for aprovado/recebido, liberar TODAS as fotos de uma vez pro usuário (web + Telegram).
-- Novo `src/lib/deliver.ts`: `deliverAllContent(chatKey)` — coleta TODAS as fotos (Supabase 1ª, local `public/polli` fallback), envia uma a uma:
-  - Telegram (chatKey numérica): `sendPhotoFile`/`sendPhoto` + mensagem de abertura e encerramento carinhosos; delay 350ms entre fotos (ritmo + rate limit).
-  - Web (chatKey "web"): grava no histórico (`addMessage`) — aparece no polling.
-  - Idempotente: flag `evidencias.conteudo_entregue` impede reenvio (webhook repetido não duplica).
-- Webhook: após `markAsPaid`, dispara a entrega via `waitUntil` quando disponível (Vercel, evita freeze matando a entrega) senão fire-and-forget.
-- `Chat.tsx`: polling leve de 8s — o web detecta a liberação automática sem recarregar manualmente.
-- Conteúdo atual no Supabase: 21 imagens (hot:9, hot_medium:7, normal:5); fallback local: 8 fotos (3 leves + 5 picantes).
-- ⚠️ Não há integração WhatsApp no projeto — somente web e Telegram.
+### Simulador de pagamento (testes)
+- Novo `src/lib/simulate.ts`:
+  - `/simulator <senha>` — ativa `evidencias.modo_simulacao` e reinicia funil (etapa 0). Senha: `SIMULATION_CODE` (default `teste123`).
+  - `[foto-comprovante]` em modo simulação → `handleSimulatedPayment`: `markAsPaid` + `deliverAllContent` + desativa o modo. Libera TUDO como se o pagamento fosse real.
+  - Integrado no Telegram (`handleTelegramUpdate`) e no web (`/api/chat`).
+- Teste real (script): senha errada → recusa; ativação → funil 0; comprovante → **21/21 fotos liberadas** ✓; modo desativado após entrega ✓. Build OK.
+- ⚠️ Não há integração WhatsApp — somente web e Telegram.
+- Pendência: cadastrar webhook no Asaas e configurar `ASAAS_*` + `SIMULATION_CODE` no painel da Vercel.
 
 ## Sessão 48 — Modo FUNIL de vendas (bot simplificado, sem memória acumulada)
 - Pedido: simplificar o bot — ele vira vendedor de conteúdo. Sem guardar memória/perfil. IA só dá naturalidade.

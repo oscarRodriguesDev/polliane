@@ -71,6 +71,8 @@ export type ChatMemory = {
     pix_copy?: string;
     // O conteúdo completo (todas as fotos) já foi entregue após o pagamento.
     conteudo_entregue?: boolean;
+    // Modo simulação de pagamento ativo (testes sem pagamento real).
+    modo_simulacao?: boolean;
   };
 };
 

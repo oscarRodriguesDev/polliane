@@ -16,6 +16,12 @@ import {
   funnelPhotoForStep,
   buildPaymentPayload,
 } from "@/lib/funnel";
+import {
+  isSimulationMode,
+  enableSimulation,
+  handleSimulatedPayment,
+  isPaymentProof,
+} from "@/lib/simulate";
 
 export const runtime = "nodejs";
 
@@ -209,6 +215,43 @@ export async function POST(request: Request): Promise<NextResponse> {
         { status: 502 }
       );
     }
+  }
+
+  // MODO SIMULAÇÃO (testes): "/simulator <senha>" ativa; com o modo ativo, o
+  // usuário manda "[foto-comprovante]" e o bot libera TODAS as fotos em massa,
+  // como se o pagamento tivesse sido confirmado no Asaas.
+  if (message.trim().startsWith("/simulator")) {
+    const senha = message.replace("/simulator", "").trim();
+    if (!senha) {
+      await addMessage(CHAT_KEY, "user", message);
+      const helpBubbles = splitIntoBubbles(
+        "Pra ativar o modo simulação de pagamento: `/simulator <senha>` 🔐\n\nDepois manda `[foto-comprovante]` que eu libero todo o conteúdo meu pra você (simulado)."
+      );
+      await addMessage(CHAT_KEY, "assistant", helpBubbles.join("\n"), undefined, helpBubbles);
+      return NextResponse.json({ messages: await getMessages(CHAT_KEY) });
+    }
+    const r = await enableSimulation(CHAT_KEY, senha);
+    const reply = r.ok
+      ? "Modo simulação ATIVADO! 🔐 Estamos começando do zero por aqui.\n\nConversa comigo normal — quando você quiser \"pagar\", é só mandar `[foto-comprovante]` e eu libero TUDO na hora. 😘"
+      : r.reason ?? "Não consegui ativar a simulação. 😅";
+    const bubbles = splitIntoBubbles(reply);
+    await addMessage(CHAT_KEY, "user", message);
+    await addMessage(CHAT_KEY, "assistant", reply, undefined, bubbles);
+    return NextResponse.json({ messages: await getMessages(CHAT_KEY) });
+  }
+
+  if (isPaymentProof(message) && (await isSimulationMode(CHAT_KEY))) {
+    const mem = await getChatMemory(CHAT_KEY);
+    const nome = (mem.sobre_o_usuario as unknown as { nome?: string }).nome;
+    const r = await handleSimulatedPayment(CHAT_KEY, nome);
+    const reply =
+      r.total === 0
+        ? "Hmm, não achei nenhuma foto pra te mandar ainda. 😅"
+        : `Liberei ${r.entregues} pra você! 💖 (simulação de pagamento concluída)`;
+    const bubbles = splitIntoBubbles(reply);
+    await addMessage(CHAT_KEY, "user", message);
+    await addMessage(CHAT_KEY, "assistant", reply, undefined, bubbles);
+    return NextResponse.json({ messages: await getMessages(CHAT_KEY) });
   }
 
   await addMessage(CHAT_KEY, "user", message);

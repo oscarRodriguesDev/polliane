@@ -1,17 +1,14 @@
 # Checkpoints
 
-## Sessão 49 — Pagamento PIX via Asaas + liberação automática do conteúdo
+## Sessão 49 — Pagamento PIX Asaas + liberação em massa + simulador
 
-- Estado: BUILD OK. Testes reais (produção) passaram:
-  - Cobrança PIX criada (customer + CNPJ + valor 49.90), QR PNG salvo em `public/pix/`, copia-e-cola retornado.
-  - `getPaymentStatus` → status + externalReference; `markAsPaid` → `assinante=true` + step 5.
-  - Contagem de conteúdo a liberar: 21 mídias image no Supabase (hot:9, hot_medium:7, normal:5) + 8 locais (fallback).
-- `src/lib/asaas.ts`: cliente v3 (produção; `ASAAS_SANDBOX=true` p/ sandbox). `createPixCharge`, `getPaymentStatus`, `isPaidStatus`, `isPaidEvent`.
-- `src/app/api/asaas/webhook/route.ts`: valida token opcional, VALIDAÇÃO DUPLA (consulta a API antes de liberar), `markAsPaid` + entrega em massa via `waitUntil` (Vercel) pra não morrer no freeze.
-- `src/lib/deliver.ts` (novo): `deliverAllContent(chatKey)` — coleta TODAS as fotos (Supabase 1º, local fallback), envia uma a uma (Telegram multipart/URL, web grava histórico), idempotente via `conteudo_entregue`.
-- `src/components/Chat.tsx`: polling leve a cada 8s — web detecta a liberação sem recarregar/esperar a próxima mensagem.
-- Nota: NÃO existe integração WhatsApp no projeto (somente web + Telegram).
-- Pendências: cadastrar webhook no painel Asaas (`/api/asaas/webhook`, eventos PAYMENT_CONFIRMED/RECEIVED); validar liberação real no web/TG; configurar `ASAAS_*` no painel da Vercel.
+- Estado: BUILD OK.
+- Pagamento PIX: `src/lib/asaas.ts` (customer/CNPJ/cobrança/QR/copia-e-cola), webhook `/api/asaas/webhook` (validação dupla + `markAsPaid`), etapa 4 do funil gera QR real.
+- Liberação em massa: `src/lib/deliver.ts deliverAllContent` — todas as fotos (Supabase 1º, local fallback) enviadas ao confirmar pagamento; idempotente (`conteudo_entregue`); `waitUntil` no webhook pra não morrer no freeze da Vercel. `Chat.tsx` com polling 8s.
+- SIMULADOR (novo): `/simulator <senha>` ativa modo simulação (`SIMULATION_CODE`, default `teste123` no .env) e reinicia o funil na etapa 0. Com o modo ativo, mandar `[foto-comprovante]` libera TODAS as fotos como pagamento real (`handleSimulatedPayment` → `markAsPaid` + `deliverAllContent`).
+- Teste simulado: senha errada → recusa ✓; ativa → funil etapa 0 ✓; `[foto-comprovante]` → **21/21 fotos liberadas** ✓; modo desativado após entrega ✓.
+- Nota: não há integração WhatsApp no projeto (só web + Telegram).
+- Pendências: cadastrar webhook no Asaas (`/api/asaas/webhook`, PAYMENT_CONFIRMED/RECEIVED); validar simulação no web/TG; variáveis `ASAAS_*` + `SIMULATION_CODE` no painel Vercel.
 
 ## Sessão 48 — Modo FUNIL de vendas (bot simplificado, sem memória)
 

@@ -25,6 +25,12 @@ import {
   funnelPhotoForStep,
   buildPaymentPayload,
 } from "@/lib/funnel";
+import {
+  isSimulationMode,
+  enableSimulation,
+  handleSimulatedPayment,
+  isPaymentProof,
+} from "@/lib/simulate";
 
 const TELEGRAM_API = "https://api.telegram.org";
 
@@ -551,6 +557,22 @@ export async function handleTelegramUpdate(update: {
     return true;
   }
 
+  // Comprovante em modo simulação: se ativo, o bot se comporta como se o
+  // pagamento tivesse sido confirmado e libera TODAS as fotos em massa.
+  if (isPaymentProof(text) && (await isSimulationMode(chatKey))) {
+    const mem = await getChatMemory(chatKey);
+    const nome = (
+      mem.sobre_o_usuario as unknown as { nome?: string }
+    ).nome;
+    const r = await handleSimulatedPayment(chatKey, nome);
+    const info =
+      r.total === 0
+        ? "Hmm, não achei nenhuma foto pra te mandar ainda. 😅"
+        : `Liberei ${r.entregues} pra você! 💖 (simulação de pagamento concluída)`;
+    await sendText(chatId, info);
+    return true;
+  }
+
   // Comandos básicos.
   if (text === "/start") {
     // No modo funil o /start JÁ inicia o roteiro: a Polli se apresenta e manda
@@ -580,6 +602,27 @@ export async function handleTelegramUpdate(update: {
     }
     await resetConversation(String(chatId));
     await sendText(chatId, "Recomeçando do zero, bb... apaguei tudo da minha memória. 🥺");
+    return true;
+  }
+
+  if (text.startsWith("/simulator")) {
+    const arg = text.replace("/simulator", "").trim();
+    if (!arg) {
+      await sendText(
+        chatId,
+        "Pra ativar o modo simulação de pagamento: `/simulator <senha>` 🔐\n\nDepois manda `[foto-comprovante]` que eu libero todo o conteúdo meu pra você (simulado)."
+      );
+      return true;
+    }
+    const r = await enableSimulation(chatKey, arg);
+    if (!r.ok) {
+      await sendText(chatId, r.reason ?? "Não consegui ativar a simulação. 😅");
+      return true;
+    }
+    await sendText(
+      chatId,
+      "Modo simulação ATIVADO! 🔐 Estamos começando do zero por aqui.\n\nConversa comigo normal — quando você quiser saber o que é pagamento, é só mandar `[foto-comprovante]` e eu libero TUDO na hora. 😘"
+    );
     return true;
   }
 
