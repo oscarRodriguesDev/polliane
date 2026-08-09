@@ -1,5 +1,22 @@
 # Memórias (VIBECODE)
 
+## Sessão 51 — QR do PIX via data URL + fala padronizada das fotos picantes (commit 60797f1)
+
+- Queixa 1: "o bot web não exibe o código do QR corretamente" → confirmada a causa raiz: `createPixCharge` escrevia o PNG em `public/pix/pay_*.png` e o web usava `publicUrl=/pix/...`. Em produção (Vercel, serverless) o filesystem é efêmero/read-only → a imagem `data:image/png;base64,...` não depende de arquivo.
+- Queixa 2: "se não exibir o QR, ao menos a chave PIX/copia e cola deve aparecer" → a chave já vai como balão de texto separado (`pixBubble`), garantida de qualquer jeito.
+- **Implementação (QR)**:
+  - `funnel.ts buildPaymentPayload`: salva `evidencias.pix_qr_base64` e devolve `qrBase64` no retorno; no reuso da cobrança lê o base64 salvo (sem nova chamada ao Asaas).
+  - `chat/route.ts` (web): `qrImageUrl = pay.qrBase64 ? 'data:image/png;base64,' + pay.qrBase64 : pay.publicUrl` — rende no `<img>` sem cache de rede nem disco.
+  - `telegram.ts`: novo `sendPhotoBase64` (bytes via multipart) + `sendPhotoBytes` (núcleo; `new Uint8Array(buffer)` é BlobPart válido). Preferido quando `qrBase64` existe; `filePath` fica de fallback.
+  - `.gitignore`: `/public/pix/` versionado como runtime (nunca subir).
+  - Validação (script descartado): `qrBase64` = PNG válido (magic `89504e470d0a1a0a`, 488×488 px), reuso devolve mesmo `paymentId`/base64, e `data:` URL pronto. ⚠️ Modelo atual não lê imagem; base do teste foi o magic number + dimensões.
+- **Implementação (fala das fotos no funil)** — queixa: em foto picante o bot "evita falar sobre ela" (moderação anti-pornografia das IAs recusa/desvia).
+  - Novo `funnelPhotoLine(tag, description)` em `funnel.ts`: templates fixos por nível (`normal`/`hot_medium`/`hot`, 2 variações cada) + `extractVisualDetail` detecta peça de roupa ("blusinha preta/florida...") → prefixo "olha pra minha X…", ou pose ("deitada de ladinho", "na banheira"...) → "olha eu Y…". Sem chamada de IA.
+  - Aplicado em `chat/route.ts` e `telegram.ts` somente quando há `photoTag && photo.imageUrl && photo.description`; sem foto forçada mantém `refineReplyWithPhoto` (IA) como antes.
+  - Testes com as 7 descrições reais do banco (normal ×2, hot_medium ×2, hot ×3) ✓. Frases exemplos: "olha pra minha blusinha preta… olha isso… acha que combina comigo? 💕"; "olha eu deitada de ladinho… é… eu tava com umas ideias na cabeça quando tirei essa. 🫦".
+- Build OK. Commit+push `60797f1` na main.
+- Pendências: validar p.a. a p.a. web/TG (QR + chave + fala hot); webhook Asaas + envs na Vercel.
+
 ## Sessão 50 — Conteúdo novo sob demanda + acesso pago de 1 semana + chave PIX completa (commit 3573ea7)
 
 - Pedido: quem paga tem acesso por 1 SEMANA; no modo simulação o usuário pode perguntar se há conteúdo novo e o bot manda o que saiu. Também corrigir a chave PIX cortada no web.

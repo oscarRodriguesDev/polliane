@@ -1,5 +1,19 @@
 # Checkpoints
 
+## Sessão 51 — QR do PIX via data URL + fala padronizada das fotos picantes
+
+- Estado: BUILD OK; commit `60797f1` na main (push feito).
+- **QR do PIX não renderizava**: o PNG era gravado em `public/pix/` (filesystem efêmero/read-only na Vercel) e o web recebia `/pix/<id>.png` → 404.
+  - Fix: `buildPaymentPayload` persiste `evidencias.pix_qr_base64` e devolve `qrBase64`; web usa `data:image/png;base64,...` diretamente no `<img>`. Telegram usa novo `sendPhotoBase64` (bytes direto, sem disco).
+  - A chave copia-e-cola **sempre aparece** como balão de texto (fallback quando o QR falhar) — requisito do usuário.
+  - Validação: `qrBase64` PNG válido (magic `89504e47`, 488×488), reuso da cobrança → mesmo paymentId/base64 ✓.
+  - `.gitignore` adicionado: `/public/pix/` (QRs são runtime).
+- **Fala das fotos picantes (funil)**: a moderação das IAs travava/fugia de falar sobre foto hot → mensagem genérica.
+  - Fix: `funnelPhotoLine(tag, description)` em `funnel.ts` — templates fixos por nível + detalhe visual extraído da descrição (peça → "olha pra minha X…", pose → "olha eu Y…"). SEM IA em fotos forçadas do funil.
+  - Usado em `chat/route.ts` e `telegram.ts` quando há `photoTag && photo.description`.
+  - Testes das 7 descrições reais (normal/hot_medium/hot) ✓.
+- Pendências: validar p.a. a p.a. no web (QR + chave) e Telegram; webhook Asaas + envs na Vercel.
+
 ## Sessão 50 — Conteúdo novo sob demanda + acesso de 1 semana + chave PIX inteira
 
 - Estado: BUILD OK; commit `3573ea7` na main (push feito).
