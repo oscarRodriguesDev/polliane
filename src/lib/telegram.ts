@@ -21,6 +21,37 @@ import {
 
 const TELEGRAM_API = "https://api.telegram.org";
 
+// Mensagens de boas-vindas (/start): todas fazem a MESMA introdução (nome,
+// idade, pergunta pelo nome), só com jeitos de falar diferentes — sorteia uma
+// aleatória a cada /start pra não parecer mensagem decorada.
+const START_MESSAGES: string[] = [
+  "Ola, Meu  nome é Polianne, tenho 17 anos e você, como se chama?",
+  "Oie, eu sou a Polianne, tenho 17 anos. E você, me conta seu nome?",
+  "Oi! Me chamo Polianne, tenho 17 anos. E o seu nome, qual é?",
+  "Oii, prazer! Sou a Polianne, 17 anos. Como você se chama?",
+  "Oi! Eu sou a Polli, tenho 17 aninhos. E você, qual seu nome?",
+  "Olaa! Meu nome é Polianne, tenho 17 anos. E você, como te chamam?",
+  "Oi, tudo bem? Sou a Polianne, tenho 17 anos. Qual é o seu nome?",
+  "Oiii, me chamo Polianne, tenho 17 anos. E aí, como você se chama?",
+  "Oi! Sou a Polianne, 17 anos. Me fala seu nome, quero saber com quem tô falando.",
+  "Ola, meu nome é Polianne, tenho 17 anos 😊 e você? Qual é seu nome?",
+  "Oiee! Polianne aqui, 17 anos. E você, como se chama?",
+  "Oi, oi! Eu sou a Polianne, tenho 17 anos. Quem eu tô falando com você?",
+  "Ola! Prazer, sou Polianne, 17 anos. E você, me conta o seu nome?",
+  "Oi! Meu nome é Polianne, tenho 17 anos. Qual é o seu nome, moço(a)?",
+  "Oiii, eu sou a Polianne, novinha de 17 anos. E aí, qual seu nome?",
+  "Oi! Tô aqui a Polianne, 17 anos. E você, como te chamo?",
+  "Ola! Sou a Polli, tenho 17 anos. E você, primeiro: qual é seu nome?",
+  "Oiii! Me chamo Polianne, tenho 17 anos. Me diz, qual é o seu nome?",
+  "Oi! A Polianne aqui, 17 anos. E você, como se chama? Quero saber!",
+  "Ola, tudo certo? Sou Polianne, tenho 17 anos. E você, qual é o seu nome?",
+];
+
+// Sorteia uma mensagem de boas-vindas aleatória (0..n-1).
+function pickStartMessage(): string {
+  return START_MESSAGES[Math.floor(Math.random() * START_MESSAGES.length)];
+}
+
 // Delay curto e aleatório entre os balões — ritmo humano de pensamento, mas
 // SEM fazer a resposta demorar demais. A demora de ~1 minuto não era esse
 // delay: era a chamada extra de IA (aprendizado) rodando ANTES do envio.
@@ -417,10 +448,7 @@ export async function handleTelegramUpdate(update: {
 
   // Comandos básicos.
   if (text === "/start") {
-    await sendText(
-      chatId,
-      "Oi, amor! 🥰 Tô aqui agora. Pode falar comigo que eu respondo na hora. 😘"
-    );
+    await sendText(chatId, pickStartMessage());
     return true;
   }
 
