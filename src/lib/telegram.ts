@@ -23,7 +23,7 @@ import {
   getFunnelStep,
   advanceFunnelStep,
   funnelPhotoForStep,
-  paymentInfo,
+  buildPaymentPayload,
 } from "@/lib/funnel";
 
 const TELEGRAM_API = "https://api.telegram.org";
@@ -375,8 +375,13 @@ async function processMessage(
         ? await refineReplyWithPhoto(reply, photo.description, provider)
         : reply;
 
+      // Etapa 4: gera o PIX real (QR + copia-e-cola). O QR vira foto enviada
+      // por multipart (filePath salvo em public/pix).
+      let qrFilePath: string | undefined;
       if (step === 4) {
-        finalContent = `${finalContent}\n\n${paymentInfo()}`;
+        const pay = await buildPaymentPayload(chatKey);
+        finalContent = `${finalContent}\n\n${pay.text}`;
+        qrFilePath = pay.filePath;
       }
 
       const bubbles = splitIntoBubbles(finalContent);
@@ -385,7 +390,10 @@ async function processMessage(
 
       const [first, ...rest] = bubbles;
       typing.stop();
-      if (photo.filePath) {
+      const qrCaption = qrFilePath ? first ?? finalContent : undefined;
+      if (qrFilePath) {
+        await sendPhotoFile(chatId, qrFilePath, photoCaption(qrCaption ?? ""));
+      } else if (photo.filePath) {
         await sendPhotoFile(chatId, photo.filePath, photoCaption(first ?? finalContent));
       } else if (photo.imageUrl) {
         await sendPhoto(chatId, photo.imageUrl, photoCaption(first ?? finalContent));

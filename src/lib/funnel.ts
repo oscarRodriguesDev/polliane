@@ -85,8 +85,9 @@ export function funnelStageInstruction(step: number, userName?: string): string 
       );
     case 4:
       return (
-        "Momento de fechar: apresente os DADOS DE PAGAMENTO (use EXATAMENTE as informações de pagamento fornecidas) " +
-        "e liste o que a pessoa ganha ao apoiar: acesso ao conteúdo completo, fotos e vídeos exclusivos e atenção especial. " +
+        "Momento de fechar: anuncie com naturalidade e carinho que vai mandar os dados de pagamento pra pessoa " +
+        "liberar o conteúdo completo (o sistema anexa o PIX na hora — você não precisa escrever os dados, apenas puxe o clima). " +
+        "Liste o que a pessoa ganha ao apoiar: acesso ao conteúdo completo, fotos e vídeos exclusivos e atenção especial. " +
         "Seja natural, agradeça por qualquer ajuda e mostre que você vai entregar conteúdo de verdade."
       );
     default:
@@ -130,4 +131,95 @@ export async function updateFunnelStep(
   step: number
 ): Promise<void> {
   await setMemoryField(chatKey, "evidencias.funnel_step", step);
+}
+
+/** Marca a pessoa como assinante PAGO (liberada) e pula pro estágio final. */
+export async function markAsPaid(chatKey: string): Promise<void> {
+  await setMemoryField(chatKey, "evidencias.assinante", true);
+  await setMemoryField(chatKey, "evidencias.funnel_step", FUNNEL_FINAL_STEP);
+}
+
+/** A pessoa já pagou / está liberada? */
+export async function isPaidSubscriber(chatKey: string): Promise<boolean> {
+  const mem = await getChatMemory(chatKey);
+  return Boolean(
+    (mem.evidencias as unknown as Record<string, unknown>).assinante
+  );
+}
+
+/** Último paymentId gerado pra essa pessoa (pro webhook casar o pedido). */
+export async function getLastPaymentId(chatKey: string): Promise<string | null> {
+  const mem = await getChatMemory(chatKey);
+  const raw = (mem.evidencias as unknown as Record<string, unknown>).pix_payment_id;
+  return typeof raw === "string" && raw ? raw : null;
+}
+
+/**
+ * Etapa 4 — gera (uma vez) a cobrança PIX no Asaas pra pessoa e devolve o que
+ * o sistema deve enviar: o texto com a "chave" copia-e-cola + a imagem do QR.
+ * Se o Asaas não estiver configurado, cai no texto estático (PAYMENT_INFO).
+ */
+export async function buildPaymentPayload(chatKey: string): Promise<{
+  text: string;
+  qrBase64?: string;
+  filePath?: string;
+  publicUrl?: string;
+  paymentId?: string;
+}> {
+  const { createPixCharge, asaasConfigured } = await import("@/lib/asaas");
+
+  if (!asaasConfigured()) {
+    return { text: paymentInfo() };
+  }
+
+  // Já gerou pra essa pessoa? Reusa a MESMA cobrança (sem multiplicar) e
+  // reexibe o QR/payload já salvo na memória.
+  const existing = await getLastPaymentId(chatKey);
+  if (existing) {
+    const mem = await getChatMemory(chatKey);
+    const evid = mem.evidencias as unknown as Record<string, unknown>;
+    const savedText =
+      typeof evid.pix_text === "string" && evid.pix_text ? evid.pix_text : paymentInfo();
+    return {
+      text: savedText,
+      filePath: typeof evid.pix_file_path === "string" ? evid.pix_file_path : undefined,
+      publicUrl: typeof evid.pix_public_url === "string" ? evid.pix_public_url : undefined,
+      paymentId: existing,
+    };
+  }
+
+  const pix = await createPixCharge(chatKey);
+  if (!pix.ok || !pix.pixCopyPaste) {
+    console.warn("Asaas falhou, caindo pro texto estático:", pix.error);
+    return { text: paymentInfo() };
+  }
+
+  const texto = [
+    "Pra me apoiar é rapidinho, amor:",
+    "",
+    `💰 Valor: R$ ${Number(process.env.ASAAS_PIX_VALUE ?? "49.90").toFixed(2)}`,
+    `📲 PIX copia e cola (chave):`,
+    "```",
+    pix.pixCopyPaste,
+    "```",
+    "",
+    "Ou escaneia o QR code aqui do lado 💚",
+    "Assim que o pagamento cair, eu libero TODO o conteúdo na hora pra você. 😘",
+  ].join("\n");
+
+  if (pix.paymentId) {
+    await setMemoryField(chatKey, "evidencias.pix_payment_id", pix.paymentId);
+  }
+  await setMemoryField(chatKey, "evidencias.pix_text", texto);
+  if (pix.filePath) await setMemoryField(chatKey, "evidencias.pix_file_path", pix.filePath);
+  if (pix.publicUrl) await setMemoryField(chatKey, "evidencias.pix_public_url", pix.publicUrl);
+  await setMemoryField(chatKey, "evidencias.pix_copy", pix.pixCopyPaste);
+
+  return {
+    text: texto,
+    qrBase64: pix.qrCodeBase64,
+    filePath: pix.filePath,
+    publicUrl: pix.publicUrl,
+    paymentId: pix.paymentId,
+  };
 }

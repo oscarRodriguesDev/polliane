@@ -14,7 +14,7 @@ import {
   getFunnelStep,
   advanceFunnelStep,
   funnelPhotoForStep,
-  paymentInfo,
+  buildPaymentPayload,
 } from "@/lib/funnel";
 
 export const runtime = "nodejs";
@@ -226,18 +226,23 @@ export async function POST(request: Request): Promise<NextResponse> {
       const photoTag = funnelPhotoForStep(step);
       const reply = await generateReply(history, provider, CHAT_KEY);
 
-      // Força a foto da etapa (se houver) e adiciona pagamento na fase final.
+      // Força a foto da etapa (se houver) e, na etapa 4, gera o PIX real
+      // (QR + copia-e-cola) no Asaas.
       const photo = photoTag ? await resolveFunnelPhoto(photoTag) : {};
       let finalContent = photo.description
         ? await refineReplyWithPhoto(reply, photo.description, provider)
         : reply;
 
+      let qrImageUrl: string | undefined;
       if (step === 4) {
-        finalContent = `${finalContent}\n\n${paymentInfo()}`;
+        const pay = await buildPaymentPayload(CHAT_KEY);
+        finalContent = `${finalContent}\n\n${pay.text}`;
+        // Se o Asaas entregou o QR salvo em disco, serve via /pix/<id>.png.
+        qrImageUrl = pay.publicUrl;
       }
 
       const bubbles = splitIntoBubbles(finalContent);
-      await addMessage(CHAT_KEY, "assistant", finalContent, photo.imageUrl, bubbles);
+      await addMessage(CHAT_KEY, "assistant", finalContent, photo.imageUrl ?? qrImageUrl, bubbles);
       if (photo.imageUrl && photo.description) {
         await rememberPhotoSent(CHAT_KEY, photo.description);
       }

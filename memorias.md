@@ -1,5 +1,24 @@
 # Memórias (VIBECODE)
 
+## Sessão 49 — Pagamento PIX via Asaas (etapa 4 do funil gera QR real)
+- Pedido: substituir o texto estático de pagamento por cobrança PIX real + liberar o conteúdo quando o pagamento for confirmado.
+- Novo `src/lib/asaas.ts`: cliente Asaas v3 (produção por padrão; `ASAAS_SANDBOX=true` muda pra sandbox). Funções: `createPixCharge` (cria customer por chatKey como externalReference, cobrança PIX com `ASAAS_PIX_VALUE` default 49.90, salva QR PNG em `public/pix/<paymentId>.png`, devolve copia-e-cola), `getPaymentStatus`, `isPaidStatus`, `isPaidEvent`, `asaasConfigured`.
+- CPF/CNPJ obrigatório no Asaas pra cobrança PIX: lido de `ASAAS_CNPJ` (fallback `ASAAS_CUSTOMER_CPF`); customer existente sem CNPJ é corrigido via PATCH (mandatório).
+
+### Webhook `src/app/api/asaas/webhook/route.ts`
+- Recebe eventos do Asaas, valida token opcional (`ASAAS_WEBHOOK_KEY` via `?token=` ou header `x-asaas-key`).
+- **Validação dupla**: mesmo com evento `PAYMENT_*`, consulta `getPaymentStatus` na API antes de liberar (payload fake não libera nada).
+- Se pago e `externalReference` (= chatKey) existir → `markAsPaid`: salva `evidencias.assinante=true` e pula `funnel_step` pra 5 (fim/assinante).
+
+### Etapa 4 no funil (web + Telegram)
+- `buildPaymentPayload(chatKey)` (novo em `funnel.ts`): usa o Asaas pra gerar cobrança; guarda `evidencias.pix_payment_id`, `pix_text`, `pix_file_path`, `pix_public_url`, `pix_copy`. Reusa a MESMA cobrança (não duplica). Se Asaas off/falhar → fallback `paymentInfo()`.
+- `chat/route.ts`: na etapa 4 anexa o texto do PIX e usa `publicUrl` (`/pix/<id>.png`) como imagem da mensagem.
+- `telegram.ts`: na etapa 4 envia o QR via `sendPhotoFile(filePath)` (multipart) com caption + texto da chave copia-e-cola.
+- Instrução da etapa 4 ajustada: a IA só anuncia o pagamento; o SISTEMA anexa o PIX (não é mais texto estático).
+- Teste real (produção): customer criado, cobrança `PENDING`, QR PNG salvo, `getPaymentStatus`, `markAsPaid` → `assinante=true` + step 5. Build OK.
+- `.env` novos: `ASAAS_API_KEY`, `ASAAS_CNPJ`, `ASAAS_PIX_VALUE` (opcional), `ASAAS_WEBHOOK_KEY` (opcional), `ASAAS_SANDBOX` (opcional).
+- Pendência: cadastrar webhook no painel Asaas apontando pra `/api/asaas/webhook`.
+
 ## Sessão 48 — Modo FUNIL de vendas (bot simplificado, sem memória acumulada)
 - Pedido: simplificar o bot — ele vira vendedor de conteúdo. Sem guardar memória/perfil. IA só dá naturalidade.
 - Roteiro fixo (FUNNEL_MODE=1 ativo no .env):

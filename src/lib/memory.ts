@@ -60,6 +60,15 @@ export type ChatMemory = {
     ultima_foto_desc?: string;
     // Etapa atual do funil de vendas (modo FUNNEL_MODE), quando ativo.
     funnel_step?: number;
+    // Assinante PAGO (conteúdo liberado).
+    assinante?: boolean;
+    // Última cobrança PIX criada no Asaas (pro webhook casar o pedido).
+    pix_payment_id?: string;
+    // Payload do PIX salvo pra reexibir sem criar cobrança duplicada.
+    pix_text?: string;
+    pix_file_path?: string;
+    pix_public_url?: string;
+    pix_copy?: string;
   };
 };
 

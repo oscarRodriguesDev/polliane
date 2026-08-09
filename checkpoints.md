@@ -1,5 +1,14 @@
 # Checkpoints
 
+## Sessão 49 — Pagamento PIX via Asaas (etapa 4 do funil gera QR real)
+
+- Estado: BUILD OK. Teste real (produção) passou: customer criado, cobrança PENDING, QR PNG salvo em `public/pix/`, copia-e-cola, `getPaymentStatus`, `markAsPaid` → `assinante=true` + step 5.
+- Novo `src/lib/asaas.ts` + `src/app/api/asaas/webhook/route.ts`; `funnel.ts buildPaymentPayload`, `markAsPaid`, `isPaidSubscriber`, `getLastPaymentId`; `memory.ts` ganhou `assinante`, `pix_*`.
+- Etapa 4 (web + Telegram) agora anexa o QR real: web usa `publicUrl` na mensagem; Telegram envia `filePath` via `sendPhotoFile`.
+- Webhook com validação dupla (consulta a API antes de liberar). Token opcional `ASAAS_WEBHOOK_KEY`.
+- `.env` novos: `ASAAS_API_KEY`, `ASAAS_CNPJ` (obrigatório pra PIX), `ASAAS_PIX_VALUE` (default 49.90), `ASAAS_WEBHOOK_KEY`, `ASAAS_SANDBOX`.
+- Pendências: cadastrar o webhook no painel Asaas apontando pra `/api/asaas/webhook`; validar fluxo completo (5 etapas + pagamento real) no web/TG.
+
 ## Sessão 48 — Modo FUNIL de vendas (bot simplificado, sem memória)
 
 - Estado: BUILD OK. `FUNNEL_MODE=1` ativo no .env.
