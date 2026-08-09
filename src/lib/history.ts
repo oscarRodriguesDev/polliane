@@ -70,10 +70,27 @@ export async function addMessage(
 }
 
 // Apaga o histórico de uma conversa (reset / "/reset"). A memória de longo
-// prazo (ProfileMemory) também é apagada — estaca zero.
+// prazo (ProfileMemory) também é apagada — estaca zero. Se a pessoa era a
+// namorada atual da Polli, o relacionamento global também é encerrado.
 export async function resetConversation(chatKey: string): Promise<void> {
   await prisma.chatMessage.deleteMany({ where: { chatKey } });
   await prisma.profileMemory.delete({ where: { chatKey } }).catch(() => {});
+
+  // Se esta pessoa era o relacionamento atual no global, termina junto.
+  const global = await prisma.profileMemory.findUnique({
+    where: { chatKey: "_global" },
+  });
+  const g = global?.data as { relacionamento_atual?: { chat_key?: string } } | null;
+  if (g?.relacionamento_atual?.chat_key === chatKey) {
+    await prisma.profileMemory
+      .update({
+        where: { chatKey: "_global" },
+        data: {
+          data: { ...g, relacionamento_atual: null },
+        },
+      })
+      .catch(() => {});
+  }
 }
 // Número de mensagens da conversa (para progressão de fotos/calor).
 export async function countMessages(chatKey: string): Promise<number> {

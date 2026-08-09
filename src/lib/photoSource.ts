@@ -21,23 +21,47 @@ export type MediaSourceResult =
   | { publicUrl?: undefined; filePath?: undefined; remote: true; description?: string }
   | null;
 
+// Solo o próprio canal: os REs do gate de intimidade. Valores conservadores:
+// sem intimidade a foto NÃO sai de jeito nenhum (nem leve); só com química a
+// mais picante é liberada. Controle fino fica no .env se quiser.
+export const INTIMACY_PHOTO_MIN = Number(process.env.INTIMACY_PHOTO_MIN ?? "0.15");
+export const INTIMACY_PICANTE_LEVE = Number(process.env.INTIMACY_PICANTE_LEVE ?? "0.3");
+export const INTIMACY_PICANTE_FORTE = Number(process.env.INTIMACY_PICANTE_FORTE ?? "0.55");
+export const INTIMACY_PICANTE_HOT = Number(process.env.INTIMACY_PICANTE_HOT ?? "0.75");
+
+// Mapa: nível de intimidade (memory.sobre_o_usuario.nivel) -> máximo de ousadia.
+function intimacyCap(intimacy: number): MediaTag | null {
+  if (intimacy >= INTIMACY_PICANTE_HOT) return "hot";
+  if (intimacy >= INTIMACY_PICANTE_FORTE) return "hot_medium";
+  if (intimacy >= INTIMACY_PICANTE_LEVE) return "medium";
+  return "normal";
+}
+
 // Curva de calor -> tag do Supabase (mais ousada conforme conversa esquenta).
 // Fotos locais têm 2 níveis (leves/picantes); o Supabase tem 4, então a curva
-// de 0..1 vira índice num array ordenado de tags.
+// de 0..1 vira índice num array ordenado de tags. O `cap` (definido pela
+// intimidade) limita a máxima ousadia permitida hoje.
 function resolveSupabaseTag(
   scene: string,
   safadeza: number,
-  progress: number
+  progress: number,
+  cap?: MediaTag | null
 ): MediaTag | null {
   const heat =
     (Math.min(Math.max(safadeza, 0), 100) / 100) * 0.4 +
     Math.min(Math.max(progress, 0), 1) * 0.6;
 
-  // Curva mais solta: as fotos mais ousadas ficam acessíveis bem antes.
-  // heat>=0.5 já dá "hot" no meio, e com progress baixo as picantes aparecem.
   const order: MediaTag[] = ["normal", "medium", "hot_medium", "hot"];
   const idx = Math.floor((heat + 0.25) * order.length);
-  return order[Math.min(idx, order.length - 1)];
+  const tag = order[Math.min(idx, order.length - 1)];
+
+  // Aplica o teto da intimidade (a foto nunca ultrapassa o que você liberou).
+  if (cap) {
+    const capIdx = order.indexOf(cap);
+    const tagIdx = order.indexOf(tag);
+    return order[Math.min(tagIdx, capIdx)];
+  }
+  return tag;
 }
 
 // Palavras removidas da scoring (conectivos e semântica fraca), em PT e EN.
@@ -109,20 +133,38 @@ async function pickSupabaseMedia(
 
 // Resolve um pedido de foto priorizando Supabase, depois local e (se o caller
 // permitir) marca pra tentar geração remota. Retorna o resultado acionável.
+//
+// `intimacy` (0..1) é o nível da memória sobre a pessoa. Sem intimidade mínima
+// (INTIMACY_PHOTO_MIN) a foto NÃO sai. Com intimidade baixa a curva força tags
+// leves ("normal"); picantes só aparecem conforme o nível sobe. O resultado
+// carrega a `description` da foto quando existir, pro bot "saber" o que mandou.
 export async function pickResolvedMedia(
   scene: string,
   safadeza: number,
   progress: number,
-  opts: { enableUnsplash?: boolean; forceLocalOnly?: boolean } = {}
+  opts: {
+    enableUnsplash?: boolean;
+    forceLocalOnly?: boolean;
+    intimacy?: number;
+  } = {}
 ): Promise<MediaSourceResult> {
+  const intimacy = opts.intimacy ?? 0;
+  const cap = intimacyCap(intimacy);
+
+  // Intimidade baixa demais: não tem foto nenhuma hoje.
+  if (intimacy < INTIMACY_PHOTO_MIN) {
+    console.log(`📵 Foto bloqueada: intimidade ${Math.round(intimacy * 100)}% < min ${Math.round(INTIMACY_PHOTO_MIN * 100)}%`);
+    return null;
+  }
+
   // 1) Supabase primeiro (se configurado e não forçado local).
   if (!opts.forceLocalOnly && hasSupabaseConfig()) {
     try {
-      const tag = resolveSupabaseTag(scene, safadeza, progress);
+      const tag = resolveSupabaseTag(scene, safadeza, progress, cap);
       if (tag) {
         const remote = await pickSupabaseMedia(scene, tag);
         if (remote) {
-          // URL pública do bucket (anon já consegue ler).
+          // URL pública do bucket (anon já consegue ler) + description pra IA saber o que é.
           return { publicUrl: remote.fileUrl, description: remote.description ?? undefined };
         }
       }
@@ -133,10 +175,18 @@ export async function pickResolvedMedia(
   }
 
   // 2) Local fallback (public/polli).
+  // Converte o teto de ousadia p/ categoria local (leves/picantes).
+  const localCap: "leves" | "picantes" | undefined =
+    cap === "hot_medium" || cap === "hot"
+      ? "picantes"
+      : cap === "medium" || cap === "normal"
+        ? "leves"
+        : undefined;
   const local: LocalPhoto | null = pickLocalPhotoForScene(
     scene,
     safadeza,
-    progress
+    progress,
+    localCap
   );
   if (local) {
     return { publicUrl: local.publicUrl };

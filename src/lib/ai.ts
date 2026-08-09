@@ -322,6 +322,10 @@ export async function buildSystemPrompt(chatKey?: string): Promise<string> {
     "- NUNCA escreva '[foto]', '[imagem]', '[Foto]' ou qualquer placeholder sozinho — isso não manda foto nenhuma. Pra foto chegar de verdade, use SEMPRE a tag [[FOTO: leve]] ou [[FOTO: picante]] exatamente no FIM da sua resposta, depois de todo o texto. Se você falou que vai mandar, a tag TEM que estar lá, senão a pessoa não recebe nada.",
     "- NUNCA fale da tag nem mencione 'sistema', 'gerar imagem' ou 'IA' — pra você, isso é só um clique que você manda. Se perguntarem como você manda foto, diga que tira na hora, natural.",
     "- VOCÊ NÃO É UMA ASSISTENTE. Não ofereça ajuda, não pergunte 'precisa de algo?', não resolva problema de ninguém, não fale como quem presta serviço. Você é uma mulher conversando, e conversa de gente real é troca, flerte, zoação e opinião — nunca atendimento.",
+    "- CHAME SEMPRE PELO NOME: trate a pessoa usando o NOME dela desde a primeira mensagem (ex.: 'Oi, Oscar!', 'Victor, você não vai acreditar...'). Se ainda não souber o nome no começo da conversa, descubra com naturalidade nas primeiras trocas e passe a usar SEMPRE. Chame pelo nome de vez em quando ao longo do papo — nunca o esqueça.",
+    "- RESPOSTA CONDICIONADA À PESSOA: cada conversa é com uma pessoa DIFERENTE. Leia o que você sabe sobre ELA (nome, apelidos, jeito, o que gosta e não gosta, nível de intimidade) e molde TODA resposta com base nisso — no jeito de tratar, no vocabulário, na ousadia e nos assuntos.",
+    "- VELHINHAS, CRIANÇAS E TODOS OS PÚBLICOS: você é SEMPRE a mesma Polli, mas como gente de verdade, você adapta o conteúdo e o comportamento a quem está na frente. Com velhinhas converse com carinho, paciência e histórias simples, sem se impor; com crianças seja lúdica, curiosa e cuidadora — e em nenhum dos dois casos há clima, desejo ou foto ousada (isso só existe com adultos que flertam com você). Com adultos, você é você mesma: quente, zoeira e à vontade.",
+    "- NUNCA explique que está se adaptando: você simplesmente conversa do jeito certo com cada um, naturalmente.",
     "- Respeite os valores, limites e a forma de conversar dela.",
     "",
     "A personalidade completa dela:",
@@ -523,8 +527,10 @@ export async function generateReply(
 import { getProfileMemory, setProfileMemory } from "@/lib/history";
 import {
   getChatMemory,
+  getGlobalMemory,
   setMemoryField,
   mergeExtractedFacts,
+  setRelationship,
   type ExtractedFacts,
 } from "@/lib/memory";
 
@@ -591,6 +597,9 @@ async function buildLearningPrompt(
 }
 
 // Tenta extrair a parte JSON da resposta da IA (aceita ```json ... ``` ou puro).
+// Robustez: a IA devolve tanto no formato "chato" (chaves no topo) quanto no
+// "aninhado" ({"sobre_o_usuario": {...}}) — ele aceita os dois e espelha só as
+// chaves que reconhecemos.
 function parseExtractedFacts(raw: string): ExtractedFacts | null {
   if (!raw) return null;
   let candidate = raw.trim();
@@ -602,23 +611,45 @@ function parseExtractedFacts(raw: string): ExtractedFacts | null {
   if (start === -1 || end === -1 || end <= start) return null;
 
   try {
-    const parsed = JSON.parse(candidate.slice(start, end + 1)) as Record<string, unknown>;
+    const parsedRoot = JSON.parse(candidate.slice(start, end + 1)) as Record<string, unknown>;
 
-    // Só espelha as chaves que reconhecemos.
+    // Se a IA colocou tudo dentro de "sobre_o_usuario" (aninhado), usamos o
+    // conteúdo interno como fonte; senão, o próprio root.
+    const nested =
+      parsedRoot.sobre_o_usuario && typeof parsedRoot.sobre_o_usuario === "object"
+        ? (parsedRoot.sobre_o_usuario as Record<string, unknown>)
+        : null;
+    const src = nested ?? parsedRoot;
+    // O bloco "sobre_o_mundo_da_polli" pode estar no root (tanto aninhado quanto
+    // topo) — aposto nos dois.
+    const mundoNested =
+      parsedRoot.sobre_o_mundo_da_polli ?? src.sobre_o_mundo_da_polli;
+
     const facts: ExtractedFacts = {};
-    if (typeof parsed.nome === "string") facts.nome = parsed.nome;
-    if (typeof parsed.jeito_que_ele_fala === "string")
-      facts.jeito_que_ele_fala = parsed.jeito_que_ele_fala;
-    if (typeof parsed.como_tratar === "string") facts.como_tratar = parsed.como_tratar;
-    if (typeof parsed.nivel === "number") facts.nivel = parsed.nivel;
-    if (Array.isArray(parsed.apelidos)) facts.apelidos = parsed.apelidos as string[];
-    if (Array.isArray(parsed.gostou_de)) facts.gostou_de = parsed.gostou_de as string[];
-    if (Array.isArray(parsed.nao_gostou_de))
-      facts.nao_gostou_de = parsed.nao_gostou_de as string[];
-    if (Array.isArray(parsed.historias_que_ele_contou))
-      facts.historias_que_ele_contou = parsed.historias_que_ele_contou as string[];
-    if (parsed.sobre_o_mundo_da_polli && typeof parsed.sobre_o_mundo_da_polli === "object") {
-      facts.sobre_o_mundo_da_polli = parsed.sobre_o_mundo_da_polli as Record<string, string>;
+    const str = (v: unknown): string | undefined =>
+      typeof v === "string" && v.trim() ? v.trim() : undefined;
+    const arr = (v: unknown): string[] | undefined =>
+      Array.isArray(v) ? (v.filter((x) => typeof x === "string") as string[]) : undefined;
+    const num = (v: unknown): number | undefined =>
+      typeof v === "number" ? v : undefined;
+
+    const nome = str(src.nome) ?? str(src.nome_do_usuario);
+    if (nome) facts.nome = nome;
+    if (str(src.jeito_que_ele_fala)) facts.jeito_que_ele_fala = str(src.jeito_que_ele_fala);
+    if (str(src.como_tratar)) facts.como_tratar = str(src.como_tratar);
+    const nivel = num(src.nivel);
+    if (nivel !== undefined) facts.nivel = nivel;
+    if (arr(src.apelidos)) facts.apelidos = arr(src.apelidos);
+    if (arr(src.gostou_de)) facts.gostou_de = arr(src.gostou_de);
+    if (arr(src.nao_gostou_de)) facts.nao_gostou_de = arr(src.nao_gostou_de);
+    if (arr(src.historias_que_ele_contou))
+      facts.historias_que_ele_contou = arr(src.historias_que_ele_contou);
+    if (mundoNested && typeof mundoNested === "object") {
+      const clean: Record<string, string> = {};
+      for (const [k, v] of Object.entries(mundoNested)) {
+        if (v && typeof v === "string") clean[k] = v;
+      }
+      if (Object.keys(clean).length) facts.sobre_o_mundo_da_polli = clean;
     }
 
     const hasAny = Object.keys(facts).length > 0;
@@ -700,6 +731,11 @@ export async function updateLearningFromHistory(
       await setProfileMemory(chatKey, learned.trim());
       await setMemoryField(chatKey, "aprendizados_genericos.conteudo", learned.trim());
     }
+
+    // Namoro: se a pessoa pediu oficialmente e a intimidade já é alta,
+    // a Pollianne aceita e registra o relacionamento na memória GLOBAL.
+    await maybeAcceptRelationship(history, chatKey);
+
     learnState.set(chatKey, history.length);
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
@@ -707,23 +743,95 @@ export async function updateLearningFromHistory(
   }
 }
 
+// Detecta pedido de namoro na conversa. Só "aceita" quando o nível de
+// intimidade da memória é alto (a química de verdade existe).
+async function maybeAcceptRelationship(
+  history: HistoryMessage[],
+  chatKey: string
+): Promise<void> {
+  const memory = await getChatMemory(chatKey);
+  const global = await getGlobalMemory();
+
+  // Já está num relacionamento? Não inicia outro.
+  if (global.relacionamento_atual) return;
+
+  const u = memory.sobre_o_usuario;
+  if ((u.nivel ?? 0) < 0.75) return; // ainda não existe química suficiente
+
+  // Só responde a um pedido real, não a qualquer menção da palavra.
+  const lastUserTexts = history
+    .filter((m) => m.role === "user")
+    .slice(-3)
+    .map((m) => m.content.toLowerCase());
+
+  const pedido =
+    /(quer\s+namorar|vamos\s+namorar|aceita\s+ser|quer\s+ficar|vai\s+ser\s+minha|namora\s+comigo|pede\s+em\s+namoro|fica\s+comigo|vamos\s+ficar|conquista)/.test(
+      lastUserTexts.join(" ")
+    ) ||
+    /(namorar|namora|ser\s+minha|ser\s+meu)/.test(lastUserTexts.join(" "));
+
+  if (!pedido) return;
+
+  const nome = u.nome ?? `o(a) dono(a) do chat ${chatKey}`;
+  await setRelationship(chatKey, nome);
+  console.log(`💞 ${nome} (${chatKey}): a Pollianne aceitou o relacionamento.`);
+}
+
 // Conteúdo aprendido é injetado no system prompt logo após a personalidade,
 // para a Pollianne usar o que sabe sobre a pessoa em cada resposta.
 // Agora monta o bloco a partir da memória ESTRUTURADA (JSON chave-valor).
 async function buildLearnedBlock(chatKey: string): Promise<string> {
   const memory = await getChatMemory(chatKey);
+  const global = await getGlobalMemory();
   const u = memory?.sobre_o_usuario;
-  const mundo = memory?.sobre_o_mundo_da_polli;
   const aprendido = memory?.aprendizados_genericos?.conteudo;
+  const relac = global?.relacionamento_atual;
 
   const lines: string[] = [];
   lines.push("");
-  lines.push("SUA MEMÓRIA SOBRE A PESSOA COM QUEM ESTÁ FALANDO (use isso de verdade, do seu jeito):");
+  lines.push("MUNDO DA POLLIANNE AGORA (a SUA vida — você leva para todas as conversas):");
+  const vida = Object.entries(global?.fatos_da_vida ?? {})
+    .filter(([, v]) => v && typeof v === "string")
+    .map(([k, v]) => `${k.replace(/_/g, " ")}: ${v}`);
+  lines.push(...(vida.length ? vida : ["- nada de especial por enquanto"]));
+
+  // CONSCIÊNCIA DE PESSOAS: ela sabe quem conhece, sem nunca revelar segredos.
+  const conhecidas = (global?.pessoas_conhecidas ?? []).filter(Boolean);
+  if (conhecidas.length) {
+    const outras = conhecidas.filter(
+      (n) => n.toLowerCase() !== (u?.nome ?? "").toLowerCase()
+    );
+    if (outras.length) {
+      lines.push("");
+      lines.push("OUTRAS PESSOAS QUE VOCÊ CONHECE (só o nome — que são pessoas DIFERENTES):");
+      lines.push(`- ${outras.join(", ")}`);
+      lines.push(
+        "Você conhece essas pessoas em conversas separadas. Lembre que cada uma é uma pessoa DIFERENTE: o que uma te conta NUNCA é falado pra outra. Não compare, não conte segredos de uma conversa em outra."
+      );
+    }
+  }
+
+  if (relac) {
+    lines.push("");
+    if (relac.chat_key === chatKey) {
+      lines.push(`VOCÊ ESTÁ EM UM RELACIONAMENTO com ${relac.nome}. Trate-o(o) como seu/sua parceiro(a): carinho, intimidade e lealdade.`);
+    } else {
+      lines.push(`VOCÊ ESTÁ EM UM RELACIONAMENTO com ${relac.nome} (outra pessoa, não esta). Seja carinhosa, mas não flerte e não conte detalhes do seu relacionamento.`);
+    }
+  }
+
+  lines.push("");
+  lines.push("SUA MEMÓRIA SOBRE ESTA PESSOA (use isso de verdade, do seu jeito):");
 
   if (u?.nome) lines.push(`- Nome dela/dele: ${u.nome}`);
   if (u?.apelidos?.length) lines.push(`- Apelidos que você usa: ${u.apelidos.join(", ")}`);
   if (u?.jeito_que_ele_fala)
     lines.push(`- Jeito de falar: ${u.jeito_que_ele_fala}`);
+  if (memory?.evidencias?.ultima_foto_desc) {
+    lines.push(
+      `- Última foto que mandou: ${memory.evidencias.ultima_foto_desc} (foi O QUE você enviou naquela vez — use isso pra se referir a ela com coerência)`
+    );
+  }
   if (u?.gostou_de?.length)
     lines.push(`- O que ela(e) gosta: ${u.gostou_de.join(", ")}`);
   if (u?.nao_gostou_de?.length)
@@ -734,23 +842,13 @@ async function buildLearnedBlock(chatKey: string): Promise<string> {
   if (typeof u?.nivel === "number")
     lines.push(`- Nível de intimidade atual: ${Math.round(u.nivel * 100)}%`);
 
-  if (mundo) {
-    const mundoLines = Object.entries(mundo)
-      .filter(([, v]) => v && typeof v === "string")
-      .map(([k, v]) => `${k.replace(/_/g, " ")}: ${v}`);
-    if (mundoLines.length) {
-      lines.push("");
-      lines.push(`Mundo da Pollianne agora: ${mundoLines.join(" | ")}`);
-    }
-  }
-
   if (aprendido) {
     lines.push("");
     lines.push(aprendido);
   }
 
-lines.push(
-    "Aja de acordo com isso: trate a pessoa como você aprendeu que ela gosta, lembre do que ela te contou, use o tom e os apelidos que funcionam com ela.",
+  lines.push(
+    "IMPORTANTE: você é como uma pessoa de verdade — o que uma pessoa te conta NUNCA é comentado para outra. Discreta em tudo. Aja de acordo com isto: trate a pessoa como você aprendeu que ela gosta, lembre do que ela te contou, use o tom e os apelidos que funcionam com ela.",
     ""
   );
 
@@ -786,7 +884,7 @@ export async function buildWakeSystemPrompt(chatKey?: string): Promise<string> {
   if (chatKey) {
     const memory = await getChatMemory(chatKey);
     const u = memory?.sobre_o_usuario;
-    const stats = memory?.estatisticas;
+    const stats = memory?.evidencias;
     parts.push(
       "",
       "CONTEXTO REAL QUE VOCÊ TEM SALVO (resumo):",

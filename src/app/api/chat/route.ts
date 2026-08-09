@@ -6,7 +6,7 @@ import { pickResolvedMedia } from "@/lib/photoSource";
 import { extractPhotoRequest } from "@/lib/photos";
 import { splitIntoBubbles } from "@/lib/bubbles";
 import { getMessages, addMessage, resetConversation, countMessages } from "@/lib/history";
-import { bumpMemoryStats } from "@/lib/memory";
+import { bumpMemoryStats, getChatMemory, rememberPhotoSent } from "@/lib/memory";
 import { isAwake, parseWakeCommand, buildWakeStatus } from "@/lib/wake";
 
 export const runtime = "nodejs";
@@ -18,11 +18,12 @@ const CHAT_KEY = "web";
 // Detecta pedido de foto na resposta (tag [[FOTO: ...]] completa, cortada ou o
 // literal "[foto]") e anexa uma foto da Pollianne: primeiro do Supabase (mídias
 // enviadas pelo mestre), depois local (public/polli), e por fim Unsplash.
-// Sem pedido de foto, devolve o texto igual.
+// Sem pedido de foto, devolve o texto igual. A foto só sai se houver intimidade
+// suficiente (nivel da memória) — ela não manda foto pra qualquer um.
 async function resolvePhotoTag(
   reply: string,
   userMessage?: string
-): Promise<{ content: string; imageUrl?: string }> {
+): Promise<{ content: string; imageUrl?: string; description?: string }> {
   const req = extractPhotoRequest(reply, userMessage);
   if (!req) {
     return { content: reply };
@@ -31,20 +32,24 @@ async function resolvePhotoTag(
   const { content, scene } = req;
 
   try {
-    // Progresso: quanto mais mensagens, mais "calor" libera fotos picantes.
+    // Progresso: quanto mais mensagens, mais "calor" na curva (secundário).
     const totalMessages = await countMessages(CHAT_KEY);
     const progress = Math.min(totalMessages / 20, 1);
     const state = getEmotionalState();
+
+    // Nível de intimidade da memória: é ELE (junto do calor) que libera a foto.
+    const intimacy = (await getChatMemory(CHAT_KEY)).sobre_o_usuario.nivel ?? 0;
 
     const result = await pickResolvedMedia(
       scene,
       state.emotions.safadeza,
       progress,
-      { enableUnsplash: true }
+      { enableUnsplash: true, intimacy }
     );
 
+    // Quando sai a foto, a description vem junto pra Polli "saber o que é".
     if (result?.publicUrl) {
-      return { content, imageUrl: result.publicUrl };
+      return { content, imageUrl: result.publicUrl, description: result.description };
     }
 
     // Fallback final (nada local): foto parecida via Unsplash.
@@ -84,7 +89,13 @@ export async function GET(): Promise<NextResponse> {
 }
 
 // Reset: zera o histórico da conversa — o bot volta à estaca zero, sem memória.
-export async function DELETE(): Promise<NextResponse> {
+// Protegido: exige a senha de admin no header x-reset-code.
+export async function DELETE(request: Request): Promise<NextResponse> {
+  const resetCode = process.env.RESET_CODE ?? "ballerini";
+  const code = request.headers.get("x-reset-code") ?? "";
+  if (code !== resetCode) {
+    return NextResponse.json({ error: "Senha de reset incorreta." }, { status: 403 });
+  }
   await resetConversation(CHAT_KEY);
   return NextResponse.json({
     ok: true,
@@ -162,10 +173,11 @@ export async function POST(request: Request): Promise<NextResponse> {
 
   try {
     const reply = await generateReply(history, provider, CHAT_KEY);
-    const { content, imageUrl } = await resolvePhotoTag(reply, message);
+    const { content, imageUrl, description } = await resolvePhotoTag(reply, message);
     const bubbles = splitIntoBubbles(content);
     await addMessage(CHAT_KEY, "assistant", content, imageUrl, bubbles);
     await bumpMemoryStats(CHAT_KEY, 0, 1);
+    if (imageUrl) await rememberPhotoSent(CHAT_KEY, description);
     applyMoodDrift(message, content);
     // Personalidade flexível: a Pollianne reescreve o que aprendeu sobre a pessoa.
     await updateLearningFromHistory(history, provider, CHAT_KEY);

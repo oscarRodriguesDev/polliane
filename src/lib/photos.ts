@@ -92,15 +92,20 @@ function decideByHeat(safadeza: number, progress: number): PhotoKind {
 }
 
 // Sorteia a foto certa pra cena/tag, com fallback pra outra pasta se estiver vazia.
+// `cap` limita a ousadia pela intimidade (evita liberar picantes cedo demais).
 export function pickLocalPhotoForScene(
   scene: string,
   safadeza: number,
-  progress: number
+  progress: number,
+  cap?: "leves" | "picantes" | null
 ): LocalPhoto | null {
-  const kind = resolveKind(scene, safadeza, progress);
+  let kind = resolveKind(scene, safadeza, progress);
+  if (cap === "leves" && kind === "picantes") {
+    kind = "leves";
+  }
   const photo = pickLocalPhoto(kind);
   if (photo) return photo;
-  // Pasta vazia: tenta a outra antes de desistir.
+  // Pasta vazia: tenta a outra antes de desistir (exceto se o cap prender em leve).
   return pickLocalPhoto(kind === "leves" ? "picantes" : "leves");
 }
 

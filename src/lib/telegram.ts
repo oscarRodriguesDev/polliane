@@ -11,7 +11,7 @@ import {
   addMessage as dbAddMessage,
   resetConversation,
 } from "@/lib/history";
-import { bumpMemoryStats } from "@/lib/memory";
+import { bumpMemoryStats, getChatMemory, rememberPhotoSent } from "@/lib/memory";
 import {
   isAwake,
   parseWakeCommand,
@@ -188,7 +188,8 @@ export async function getWebhookInfo(): Promise<unknown> {
 // literal "[foto]") e devolve texto limpo + a foto da Pollianne (Supabase ou
 // local, com Unsplash de fallback). Prefere enviar o caminho do arquivo local
 // via multipart quando vem do disco; se vier do Supabase, manda a URL pública
-// (o Telegram baixa direto).
+// (o Telegram baixa direto). A foto só sai com intimidade suficiente: sem
+// química a Polli não manda foto pra qualquer um.
 async function resolvePhotoTag(
   chatId: number,
   reply: string,
@@ -207,17 +208,18 @@ async function resolvePhotoTag(
     const progress = Math.min(totalMessages / 20, 1);
     const state = getEmotionalState();
 
+    // Nível de intimidade da memória é o que libera a foto.
+    const intimacy = (await getChatMemory(String(chatId))).sobre_o_usuario.nivel ?? 0;
+
     const result = await pickResolvedMedia(
       scene,
       state.emotions.safadeza,
       progress,
-      { enableUnsplash: true }
+      { enableUnsplash: true, intimacy }
     );
 
-    // Foto do Supabase ou local → URL pública. Se for um caminho local de
-    // arquivo resolvido para criar um filePath, o pickResolvedMedia retorna
-    // publicUrl. Para preservar o envio multipart de arquivo local, tratamos
-    // publicUrl aqui; se precisar do filePath real, adaptamos abaixo.
+    // Foto do Supabase ou local → URL pública, e a description volta pra a
+    // Polli saber o que está enviando.
     if (result?.publicUrl) {
       return { content, imageUrl: result.publicUrl, description: result.description };
     }
@@ -274,10 +276,11 @@ async function processMessage(
     // do Telegram morre em ~5s, então reenviamos a cada 4s).
     const typing = keepTyping(chatId);
     const reply = await generateReply(history, provider, chatKey);
-    const { content, imageUrl, filePath } = await resolvePhotoTag(chatId, reply, userMessage);
+    const { content, imageUrl, filePath, description } = await resolvePhotoTag(chatId, reply, userMessage);
     const bubbles = splitIntoBubbles(content);
     await dbAddMessage(chatKey, "assistant", content, imageUrl, bubbles);
     await bumpMemoryStats(chatKey, 0, 1);
+    if (imageUrl) await rememberPhotoSent(chatKey, description);
     applyMoodDrift(userMessage, content);
 
     // Envia os balões. Desligamos o typing ANTES de cada envio, para o
@@ -400,9 +403,23 @@ export async function handleTelegramUpdate(update: {
     return true;
   }
 
-  if (text === "/reset") {
+  if (text.startsWith("/reset")) {
+    // Reset é protegido: só quem sabe a senha apaga a memória da pessoa.
+    const resetCode = process.env.RESET_CODE ?? "ballerini";
+    const arg = text.replace("/reset", "").trim();
+    if (!arg) {
+      await sendText(
+        chatId,
+        "O reset apaga TODA a nossa memória. Me manda a senha: `/reset <senha>` 🔐"
+      );
+      return true;
+    }
+    if (arg !== resetCode) {
+      await sendText(chatId, "Senha incorreta, bb. 😅 Essa eu não posso apagar.");
+      return true;
+    }
     await resetConversation(String(chatId));
-    await sendText(chatId, "Recomeçando do zero, bb... tô pronta de novo. 🥺");
+    await sendText(chatId, "Recomeçando do zero, bb... apaguei tudo da minha memória. 🥺");
     return true;
   }
 

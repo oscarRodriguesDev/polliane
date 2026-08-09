@@ -211,9 +211,14 @@ export default function Chat() {
   };
 
   async function handleReset() {
+    const pass = window.prompt("Digite a senha de admin para apagar a memória da Pollianne:") ?? "";
+    if (!pass) return;
     if (!window.confirm("Zerar a conversa? A Pollianne vai esquecer de tudo.")) return;
     try {
-      const res = await fetch("/api/chat", { method: "DELETE" });
+      const res = await fetch("/api/chat", {
+        method: "DELETE",
+        headers: { "x-reset-code": pass },
+      });
       const data = (await res.json()) as ChatResponse;
       if (!res.ok) {
         setError(data.error ?? "Falha ao resetar a conversa.");

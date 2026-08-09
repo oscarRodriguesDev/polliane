@@ -17,7 +17,7 @@
  * A duração é por instância (Map): se a Vercel der cold start, ela "dorme"
  * sozinha — o mestre só precisa acordar de novo.
  */
-import { getChatMemory } from "@/lib/memory";
+import { getChatMemory, getGlobalMemory } from "@/lib/memory";
 import { getEmotionalState, TEMPERAMENT_INFO } from "@/lib/state";
 
 // Senha pra acordar (default simples pro caso de não configurada).
@@ -71,19 +71,26 @@ export async function buildWakeStatus(
   provider: string
 ): Promise<string> {
   const mem = await getChatMemory(chatKey);
+  const global = await getGlobalMemory();
   const state = getEmotionalState();
   const info = TEMPERAMENT_INFO[state.temperament] ?? { label: state.temperament, how: "" };
   const u = mem.sobre_o_usuario;
-  const stats = mem.estatisticas;
+  const stats = mem.evidencias;
+  const relac = global.relacionamento_atual;
 
   const lines: string[] = [];
   lines.push("🤖 *MODO FÁBRICA ATIVADO*");
   lines.push("Tô acordada e falando a real: eu sou um bot (assistente de IA).");
   lines.push("");
-  lines.push(`*Conversa:* ${chatKey}`);
+lines.push(`*Conversa:* ${chatKey}`);
   lines.push(`*Provedor:* ${provider}`);
   lines.push(
     `*Humor:* ${info.label} · alegria ${state.emotions.alegria} · animo ${state.emotions.animo} · energia ${state.emotions.energia} · ousadia ${state.emotions.ousadia} · safadeza ${state.emotions.safadeza}`
+  );
+  lines.push(
+    relac
+      ? `*Relacionamento:* ${relac.chat_key === chatKey ? "eu e vocês 😍 (esta conversa)" : `estão juntos com ${relac.nome}`}`
+      : `*Relacionamento:* solteira`
   );
   lines.push("");
   lines.push("🪪 *Sobre a pessoa:*");
