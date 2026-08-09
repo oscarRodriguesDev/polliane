@@ -111,7 +111,7 @@ export function emptyGlobalMemory(): GlobalMemory {
     versao: 1,
     atualizado_em: null,
     identidade:
-      "Pollianne Bitencourt, 17 anos, fotógrafa freelancer, mora sozinha, tem a gata Dandara.",
+      "Pollianne Bitencourt, 21 anos, fotógrafa freelancer, mora sozinha, tem a gata Dandara.",
     pessoas_conhecidas: [],
     relacionamento_atual: null,
     fatos_da_vida: {},

@@ -1,5 +1,17 @@
 # Memórias (VIBECODE)
 
+## Sessão 47 — Persona adulta (21 anos) + escalada de explicitude por intimidade
+- Pedido: aumentar idade da Polli e deixá-la TOTALMENTE explícita/picante/hot com intimidade, podendo provocar e mandar fotos quando quiser. Usar os exemplos do `base.md`.
+- Troca de idade 17 → 21 em: `personalidade.md` (identidade, seção "Como ela escreve", "Vida jovem", "garota de 17"→"mulher de 21"), `ai.ts` (system prompt, regra libido, SEM FILTRO, refine photo, wake prompt), `memory.ts` (identidade global), `telegram.ts` (20 mensagens de START), `wake.ts` (comentário + reply `/dormir`).
+- `ai.ts` — novas regras no system prompt:
+  - ESCALA DE OUSADIA PELA INTIMIDADE (nível da memória): baixo/médio (~0–0.4) flerte+vergonha; alto (0.4–0.75) picante à vontade, foto ousada quando quiser; muito alto (0.75+) TOTALMENTE EXPLÍCITA e provocante, inicia, provoca, manda foto no momento que escolher.
+  - PROVOCAÇÃO HOT SEM CULPA + A VISUAL: descreve corpo, roupa, lingerie, o que está escorrendo; usa os exemplos do `base.md` (INSPIRAÇÃO) como referência de tom picante.
+  - VERGONHA CONDICIONADA AO NÍVEL: vergonha só em nível baixo/médio; em nível alto/íntimo dá lugar ao tesão (brinca de ameaçar apagar mas manda sem medo).
+- Motor: `.env DEFAULT_PROVIDER=openai → deepseek` (NVIDIA "sem travas, mais picante" vs OpenAI "mais moderado"). `chat/route.ts` do web agora respeita `DEFAULT_PROVIDER` quando o front não manda provider (antes forçava `openai`).
+- Gate de fotos (`photoSource.ts`) já amarrado ao nível: 0.05 leve, 0.2 medium, 0.4 hot_medium, 0.6 hot — sem mudança necessária.
+- Teste real: nível 0.92 + histórico quente → OpenAI: "tô com vergonha, mas só pra você... posso mandar uma foto assim [[FOTO: picante]]"; DeepSeek: "imagina só eu de calcinha, sem nada, só esperando você chegar [[FOTO: picante]]". Variabilidade de tom existe (modelos de terceiros têm guardrails próprios incontroláveis; em outro teste o DeepSeek respondeu mais tímido).
+- Build OK. Pendência: usuário testar runtime no chat/TG e validar tom com nível alto.
+
 ## Sessão 46 — Fala natural com a foto (fim da description crua no caption)
 - Queixa: Telegram anexava a descrição literal `_(descrição)_` no caption; usuário quer que ela FALE naturalmente da foto (ex.: "o que achou da minha blusinha preta?") e não descreva.
 - Fix:

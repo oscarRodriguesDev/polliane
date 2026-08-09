@@ -1,5 +1,15 @@
 # Checkpoints
 
+## Sessão 47 — Persona adulta (21 anos) + escalada de explicitude por intimidade
+
+- Estado: BUILD OK.
+- Idade 17 → 21 em todos os arquivos (personalidade.md, ai.ts, memory.ts, telegram.ts START, wake.ts).
+- `ai.ts`: ESCALA DE OUSADIA PELA INTIMIDADE (nível 0.75+ = totalmente explícita e provocante), PROVOCAÇÃO HOT SEM CULPA, VERGONHA CONDICIONADA AO NÍVEL (vergona só em nível baixo/médio).
+- `.env` DEFAULT_PROVIDER: `openai` → `deepseek` (menos travado); `chat/route.ts` web passou a respeitar DEFAULT_PROVIDER.
+- Gate de fotos já amarrado ao nível (0.2 medium / 0.4 hot_medium / 0.6 hot).
+- Teste: nível 0.92 + conversa quente → OpenAI deu "[[FOTO: picante]]", DeepSeek deu picante/flerte quente. Variabilidade de tom existe (guardrails das APIs de terceiros).
+- Pendências: validar runtime no web/TG em nível alto; commit/push das Sessões 44–47.
+
 ## Sessão 46 — Fala natural com a foto (fim da description crua no caption)
 
 - Estado: BUILD OK.

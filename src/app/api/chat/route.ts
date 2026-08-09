@@ -130,8 +130,16 @@ export async function POST(request: Request): Promise<NextResponse> {
     );
   }
 
+  // Provedor: botão do front tem prioridade; senão usa o DEFAULT_PROVIDER
+  // (agora deepseek por padrão — menos travado e mais picante). openai é o
+  // mais moderado; grok é inteligente e picante.
+  const defaultP = (process.env.DEFAULT_PROVIDER ?? "openai").toLowerCase();
   const provider: Provider =
-    body.provider === "deepseek" ? "deepseek" : body.provider === "grok" ? "grok" : "openai";
+    body.provider === "deepseek" || body.provider === "grok"
+      ? body.provider
+      : defaultP === "deepseek" || defaultP === "grok"
+        ? defaultP
+        : "openai";
 
   // MODO FÁBRICA: acordar/dormir, e conversa acordada roda no prompt honesto.
   const wake = parseWakeCommand(message, CHAT_KEY);

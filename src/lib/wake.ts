@@ -1,7 +1,7 @@
 /**
  * MODO "ACORDAR" (fábrica/digbug) da Pollianne.
  *
- * Por padrão a Polli vive o personagem de mulher de 17 anos e NUNCA admite ser
+ * Por padrão a Polli vive o personagem de mulher de 21 anos e NUNCA admite ser
  * um bot. Este módulo implementa um "despertador" secreto: quando a pessoa (o
  * mestre) manda a frase de ativação + a senha (env WAKE_CODE), a Polli "acorda"
  * e passa a falar de verdade como sistema — reconhecendo que é uma IA, etc.
@@ -58,7 +58,7 @@ export function parseWakeCommand(
     return {
       handled: true,
       reply:
-        "E aí eu volto a ser a menina de 17 anos... tô de volta. 🥰 Qualquer coisa, bb.",
+        "E aí eu volto a ser a mulher de 21 anos... tô de volta. 🥰 Qualquer coisa, bb.",
     };
   }
 
