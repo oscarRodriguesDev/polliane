@@ -58,6 +58,8 @@ export type ChatMemory = {
     primeira_foto: boolean;
     // Descrição da última foto enviada (a Polli "sabe" o que mandou).
     ultima_foto_desc?: string;
+    // Etapa atual do funil de vendas (modo FUNNEL_MODE), quando ativo.
+    funnel_step?: number;
   };
 };
 

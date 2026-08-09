@@ -1,5 +1,15 @@
 # Checkpoints
 
+## Sessão 48 — Modo FUNIL de vendas (bot simplificado, sem memória)
+
+- Estado: BUILD OK. `FUNNEL_MODE=1` ativo no .env.
+- Roteiro por etapa (sistema força a foto, IA só conversa):
+  0 apresentação + foto normal → 1 ajuda (sem foto) → 2 foto hot_medium → 3 foto hot → 4 dados de pagamento → 5 assinante.
+- Arquivos: `src/lib/funnel.ts` (novo), `ai.ts` (prompt simplificado + aprendizado off), `photoSource.ts` (forceTag), `chat/route.ts` + `telegram.ts` (caminho funil).
+- Dados de pagamento: env `PAYMENT_INFO` (padrão mostra Pix).
+- Teste: etapa 0 responde apresentando e anunciando foto ✓. ~30s por resposta na NVIDIA.
+- Pendências: validar fluxo completo (5 etapas) no web/TG; commit/push das Sessões 44–48.
+
 ## Sessão 47 — Persona adulta (21 anos) + escalada de explicitude por intimidade
 
 - Estado: BUILD OK.

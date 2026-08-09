@@ -18,6 +18,13 @@ import {
   parseWakeCommand,
   buildWakeStatus,
 } from "@/lib/wake";
+import {
+  funnelEnabled,
+  getFunnelStep,
+  advanceFunnelStep,
+  funnelPhotoForStep,
+  paymentInfo,
+} from "@/lib/funnel";
 
 const TELEGRAM_API = "https://api.telegram.org";
 
@@ -288,6 +295,35 @@ async function resolvePhotoTag(
   }
 }
 
+// Foto forçada do FUNIL de vendas: ignora curva/intimidade e usa a tag exata
+// (normal -> medium -> hot). Devolve filePath (foto local, multipart) ou URL.
+async function resolveTelegramFunnelPhoto(
+  tag: "normal" | "medium" | "hot_medium" | "hot"
+): Promise<{ imageUrl?: string; filePath?: string; description?: string }> {
+  try {
+    const state = getEmotionalState();
+    const result = await pickResolvedMedia("", state.emotions.safadeza, 1, {
+      enableUnsplash: true,
+      forceTag: tag,
+    });
+    if (result?.filePath) {
+      return { filePath: result.filePath, description: result.description };
+    }
+    if (result?.publicUrl) {
+      return { imageUrl: result.publicUrl, description: result.description };
+    }
+    if (result?.remote) {
+      const url = await generateImage("retrato de mulher", { remote: true });
+      return { imageUrl: url };
+    }
+    return {};
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    console.error("Falha ao gerar foto do funil (Telegram):", detail);
+    return {};
+  }
+}
+
 // Mesmo drift emocional do chat interno.
 function applyMoodDrift(userMessage: string, assistantReply: string): void {
   const lower = (userMessage + " " + assistantReply).toLowerCase();
@@ -322,9 +358,52 @@ async function processMessage(
   }));
 
   try {
+    const typing = keepTyping(chatId);
+
+    // MODO FUNIL (vendas): o sistema conduz o roteiro — força a foto da etapa
+    // e avança. A IA só dá naturalidade (prompt simplificado no ai.ts).
+    if (funnelEnabled()) {
+      const step = await getFunnelStep(chatKey);
+      const photoTag = funnelPhotoForStep(step);
+      const reply = await generateReply(history, provider, chatKey);
+
+      const photo = photoTag
+        ? await resolveTelegramFunnelPhoto(photoTag)
+        : { filePath: undefined as string | undefined, imageUrl: undefined as string | undefined, description: undefined as string | undefined };
+
+      let finalContent = photo.description
+        ? await refineReplyWithPhoto(reply, photo.description, provider)
+        : reply;
+
+      if (step === 4) {
+        finalContent = `${finalContent}\n\n${paymentInfo()}`;
+      }
+
+      const bubbles = splitIntoBubbles(finalContent);
+      await dbAddMessage(chatKey, "assistant", finalContent, photo.imageUrl, bubbles);
+      if (photo.description) await rememberPhotoSent(chatKey, photo.description);
+
+      const [first, ...rest] = bubbles;
+      typing.stop();
+      if (photo.filePath) {
+        await sendPhotoFile(chatId, photo.filePath, photoCaption(first ?? finalContent));
+      } else if (photo.imageUrl) {
+        await sendPhoto(chatId, photo.imageUrl, photoCaption(first ?? finalContent));
+      } else {
+        await sendText(chatId, first ?? finalContent);
+      }
+      for (const bubble of rest) {
+        const wait = keepTyping(chatId);
+        await sleep(randomDelayMs());
+        wait.stop();
+        await sendText(chatId, bubble);
+      }
+      await advanceFunnelStep(chatKey, step);
+      return;
+    }
+
     // Mantém o "digitando..." vivo enquanto a IA gera a resposta (o indicador
     // do Telegram morre em ~5s, então reenviamos a cada 4s).
-    const typing = keepTyping(chatId);
     const reply = await generateReply(history, provider, chatKey);
 
     // Recados: se a IA marcou a resposta com a tag [[ENTREGAR: ... | ...]],
@@ -466,6 +545,12 @@ export async function handleTelegramUpdate(update: {
 
   // Comandos básicos.
   if (text === "/start") {
+    // No modo funil o /start JÁ inicia o roteiro: a Polli se apresenta e manda
+    // a amostra leve como primeiro contato (etapa 0).
+    if (funnelEnabled()) {
+      await processMessage(chatId, text, getProvider(chatId));
+      return true;
+    }
     await sendText(chatId, pickStartMessage());
     return true;
   }

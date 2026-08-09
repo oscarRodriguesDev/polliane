@@ -9,12 +9,45 @@ import { getMessages, addMessage, resetConversation, countMessages } from "@/lib
 import { bumpMemoryStats, getChatMemory, rememberPhotoSent } from "@/lib/memory";
 import { extractEntregarTag, addRecado, isCasadaComEsteChat, isPicanteScene } from "@/lib/recados";
 import { isAwake, parseWakeCommand, buildWakeStatus } from "@/lib/wake";
+import {
+  funnelEnabled,
+  getFunnelStep,
+  advanceFunnelStep,
+  funnelPhotoForStep,
+  paymentInfo,
+} from "@/lib/funnel";
 
 export const runtime = "nodejs";
 
-// Conversa do site: uma única chave persistente no Postgres. A Pollianne lembra
-// do histórico mesmo com cold start/deploy (não some mais como no Map antigo).
+// Conversa do site: uma única chave persistente no Postgres.
 const CHAT_KEY = "web";
+
+// Resolve a foto que o FUNIL de vendas deve enviar nesta etapa (força a tag
+// exata: normal -> media -> hot). Sem curva de calor nem gate de intimidade —
+// o roteiro decide. Devolve URL + description (a IA "sabe" o que enviou).
+async function resolveFunnelPhoto(
+  tag: "normal" | "medium" | "hot_medium" | "hot"
+): Promise<{ imageUrl?: string; description?: string }> {
+  try {
+    const state = getEmotionalState();
+    const result = await pickResolvedMedia("", state.emotions.safadeza, 1, {
+      enableUnsplash: true,
+      forceTag: tag,
+    });
+    if (result?.publicUrl) {
+      return { imageUrl: result.publicUrl, description: result.description };
+    }
+    if (result?.remote) {
+      const url = await generateImage("retrato de mulher");
+      return { imageUrl: url };
+    }
+    return {};
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    console.error("Falha ao gerar foto do funil:", detail);
+    return {};
+  }
+}
 
 // Detecta pedido de foto na resposta (tag [[FOTO: ...]] completa, cortada ou o
 // literal "[foto]") e anexa uma foto da Pollianne: primeiro do Supabase (mídias
@@ -185,6 +218,42 @@ export async function POST(request: Request): Promise<NextResponse> {
     role: m.role,
     content: m.content,
   }));
+
+  // MODO FUNIL: sistema conduz o roteiro de vendas (etapa -> foto -> avanço).
+  if (funnelEnabled()) {
+    try {
+      const step = await getFunnelStep(CHAT_KEY);
+      const photoTag = funnelPhotoForStep(step);
+      const reply = await generateReply(history, provider, CHAT_KEY);
+
+      // Força a foto da etapa (se houver) e adiciona pagamento na fase final.
+      const photo = photoTag ? await resolveFunnelPhoto(photoTag) : {};
+      let finalContent = photo.description
+        ? await refineReplyWithPhoto(reply, photo.description, provider)
+        : reply;
+
+      if (step === 4) {
+        finalContent = `${finalContent}\n\n${paymentInfo()}`;
+      }
+
+      const bubbles = splitIntoBubbles(finalContent);
+      await addMessage(CHAT_KEY, "assistant", finalContent, photo.imageUrl, bubbles);
+      if (photo.imageUrl && photo.description) {
+        await rememberPhotoSent(CHAT_KEY, photo.description);
+      }
+      await advanceFunnelStep(CHAT_KEY, step);
+    } catch (error) {
+      console.error("Falha ao gerar resposta da IA (funil):", error);
+      return NextResponse.json(
+        {
+          error: "Não consegui responder agora. Tente novamente em instantes.",
+          messages: await getMessages(CHAT_KEY),
+        },
+        { status: 502 }
+      );
+    }
+    return NextResponse.json({ messages: await getMessages(CHAT_KEY) });
+  }
 
   try {
     const reply = await generateReply(history, provider, CHAT_KEY);

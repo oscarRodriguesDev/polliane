@@ -152,13 +152,16 @@ export async function pickResolvedMedia(
     enableUnsplash?: boolean;
     forceLocalOnly?: boolean;
     intimacy?: number;
+    // Funil de vendas: força UMA tag exata (normal/medium/hot_medium/hot),
+    // ignorando curva de calor e teto de intimidade. Usado no modo FUNNEL_MODE.
+    forceTag?: MediaTag;
   } = {}
 ): Promise<MediaSourceResult> {
   const intimacy = opts.intimacy ?? 0;
   const cap = intimacyCap(intimacy);
 
   // Intimidade baixa demais: não tem foto nenhuma hoje.
-  if (intimacy < INTIMACY_PHOTO_MIN) {
+  if (intimacy < INTIMACY_PHOTO_MIN && opts.forceTag === undefined) {
     console.log(`📵 Foto bloqueada: intimidade ${Math.round(intimacy * 100)}% < min ${Math.round(INTIMACY_PHOTO_MIN * 100)}%`);
     return null;
   }
@@ -166,7 +169,7 @@ export async function pickResolvedMedia(
   // 1) Supabase primeiro (se configurado e não forçado local).
   if (!opts.forceLocalOnly && hasSupabaseConfig()) {
     try {
-      const tag = resolveSupabaseTag(scene, safadeza, progress, cap);
+      const tag = opts.forceTag ?? resolveSupabaseTag(scene, safadeza, progress, cap);
       if (tag) {
         const remote = await pickSupabaseMedia(scene, tag);
         if (remote) {

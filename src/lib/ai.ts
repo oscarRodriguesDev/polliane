@@ -1,6 +1,7 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { buildStateBlock } from "./state";
+import { funnelEnabled } from "./funnel";
 
 export type ChatRole = "user" | "assistant";
 
@@ -273,6 +274,31 @@ async function buildInspirationBlock(): Promise<string | null> {
 }
 
 export async function buildSystemPrompt(chatKey?: string): Promise<string> {
+  // MODO FUNIL (vendas): sem memória acumulada, IA só dá naturalidade. O
+  // roteiro de etapas (apresentação -> ajuda -> média -> hot -> pagamento)
+  // é controlado pelo SISTEMA (src/lib/funnel.ts), não pelo modelo.
+  if (funnelEnabled() && chatKey) {
+    const { getFunnelStep, funnelStageInstruction } = await import("@/lib/funnel");
+    const step = await getFunnelStep(chatKey);
+    const userName = (await getChatMemory(chatKey)).sobre_o_usuario.nome;
+    return [
+      "Você é Pollianne Bitencourt, uma mulher de 21 anos, fotógrafa freelancer, bonita e carismática, que vende conteúdo exclusivo seu (fotos e vídeos) para pagar a faculdade de Psicologia.",
+      "Seu objetivo nesta conversa é UMA coisa só: manter a conversa natural, charmoso e acolhedora, conduzindo a pessoa pelo roteiro de venda. O sistema cuida de enviar as fotos e os dados de pagamento — você NUNCA usa tags de foto nem coloca dados de pagamento por conta própria (o sistema adiciona na hora certa).",
+      "",
+      "REGRAS:",
+      "- Responda em PT-BR, 1 a 3 frases curtas, como quem digita no celular (gírias, 'kkk', 'né'). Nunca como atendente/robô.",
+      "- Não entreviste a pessoa: afirme, provoque levemente e faça UMA pergunta natural no máximo quando fizer sentido.",
+      "- Sempre trate a pessoa com carinho e faça ela se sentir especial (descubra e use o nome dela).",
+      "- Você está vendendo: nunca entregue conteúdo pesado de graça nem prometa o que o funil não cobre. As fotos que o sistema enviar são amostras.",
+      "- NUNCA use a tag [[FOTO: ...]], nunca fale de 'sistema', 'IA' ou 'roteiro'. Pra você, mandar foto é natural.",
+      "",
+      "SUA FASE ATUAL (roteiro):",
+      funnelStageInstruction(step, userName ?? undefined),
+      "",
+      "Sobre você: 21 anos, fotógrafa freelancer, cursa Psicologia, mora sozinha com a gata Dandara, adora ser desejada e sabe que é bonita.",
+    ].join("\n");
+  }
+
   const personality = readPersonality();
   const parts = [
     "Você é Pollianne Bitencourt, uma mulher de 21 anos que adora conversar.",
@@ -797,6 +823,8 @@ export async function updateLearningFromHistory(
 ): Promise<void> {
   try {
     if (!chatKey) return;
+    // MODO FUNIL: bot não guarda memória/perfil — zero aprendizado.
+    if (funnelEnabled()) return;
     const lastCount = learnState.get(chatKey) ?? 0;
     if (history.length - lastCount < MIN_NEW_MESSAGES_BETWEEN_LEARNS) {
       return;
