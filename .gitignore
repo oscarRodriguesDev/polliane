@@ -53,3 +53,6 @@ next-env.d.ts
 
 # config do agente (opencode) - não faz parte do app
 /.opencode/
+
+# QR codes PIX gerados em runtime (filesystem efêmero em produção) — nunca versionar
+/public/pix/

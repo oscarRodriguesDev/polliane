@@ -23,6 +23,7 @@ import {
   getFunnelStep,
   advanceFunnelStep,
   funnelPhotoForStep,
+  funnelPhotoLine,
   buildPaymentPayload,
 } from "@/lib/funnel";
 import {
@@ -204,14 +205,38 @@ function mimeFor(filePath: string): string {
   return mime[ext] ?? "application/octet-stream";
 }
 
-// Envia uma foto que está no DISCO (public/polli) via multipart — o Telegram
+// Envia foto que está no DISCO (public/polli) via multipart — o Telegram
 // não consegue baixar URLs locais, então o arquivo é subido junto.
 export async function sendPhotoFile(chatId: number, filePath: string, caption: string): Promise<void> {
-  const token = getBotToken();
   const buffer = readFileSync(filePath);
+  await sendPhotoBytes(chatId, buffer, mimeFor(filePath), path.basename(filePath), caption);
+}
+
+// Envia o QR do Pix direto do base64 (sem depender de arquivo em disco — no
+// filesystem efêmero da Vercel o PNG gravado em public/ não persiste).
+export async function sendPhotoBase64(chatId: number, base64: string, caption: string): Promise<void> {
+  await sendPhotoBytes(
+    chatId,
+    Buffer.from(base64, "base64"),
+    "image/png",
+    "qrcode.png",
+    caption
+  );
+}
+
+// Núcleo do envio de foto via multipart (bytes brutos, qualquer origem).
+async function sendPhotoBytes(
+  chatId: number,
+  buffer: Buffer,
+  mime: string,
+  filename: string,
+  caption: string
+): Promise<void> {
+  const token = getBotToken();
   const form = new FormData();
   form.append("chat_id", String(chatId));
-  form.append("photo", new Blob([buffer], { type: mimeFor(filePath) }), path.basename(filePath));
+  // Uint8Array é um BlobPart válido; Buffer não (no DOM FormData).
+  form.append("photo", new Blob([new Uint8Array(buffer)], { type: mime }), filename);
   form.append("caption", caption);
   form.append("parse_mode", "Markdown");
 
@@ -379,12 +404,18 @@ async function processMessage(
         ? await resolveTelegramFunnelPhoto(photoTag)
         : { filePath: undefined as string | undefined, imageUrl: undefined as string | undefined, description: undefined as string | undefined };
 
-      let finalContent = photo.description
-        ? await refineReplyWithPhoto(reply, photo.description, provider)
-        : reply;
+      let finalContent = reply;
+      if (photo.imageUrl && photoTag && photo.description) {
+        // Foto picante + moderação = a IA foge de falar da foto. Fala
+        // padronizada (sem IA) citando a peça/pose da descrição real.
+        finalContent = funnelPhotoLine(photoTag, photo.description);
+      } else if (photo.description) {
+        finalContent = await refineReplyWithPhoto(reply, photo.description, provider);
+      }
 
-      // Etapa 4: gera o PIX real (QR + copia-e-cola). O QR vira foto enviada
-      // por multipart (filePath salvo em public/pix).
+      // Etapa 4: gera o PIX real (QR + copia-e-cola). O QR preferencialmente
+      // sai direto do base64 (sem disco); só cai no filePath se não houver.
+      let qrBase64: string | undefined;
       let qrFilePath: string | undefined;
       let pixBubble: string | undefined;
       if (step === 4) {
@@ -394,6 +425,7 @@ async function processMessage(
         const linhas = (pay.text ?? "").split("\n");
         const idxCopia = linhas.findIndex((l) => /copia e cola/i.test(l));
         pixBubble = idxCopia >= 0 ? linhas.slice(idxCopia).join("\n").trim() : pay.text;
+        qrBase64 = pay.qrBase64;
         qrFilePath = pay.filePath;
       }
 
@@ -404,9 +436,14 @@ async function processMessage(
 
       const [first, ...rest] = bubbles;
       typing.stop();
-      if (qrFilePath) {
-        // Foto do QR + caption com a FALA da IA.
-        await sendPhotoFile(chatId, qrFilePath, photoCaption(first ?? finalContent));
+      if (qrBase64 || qrFilePath) {
+        // Foto do QR + caption com a FALA da IA. O QR em base64 é preferido
+        // (funciona no filesystem efêmero); o filePath é o fallback local.
+        if (qrBase64) {
+          await sendPhotoBase64(chatId, qrBase64, photoCaption(first ?? finalContent));
+        } else {
+          await sendPhotoFile(chatId, qrFilePath!, photoCaption(first ?? finalContent));
+        }
         for (const bubble of rest) {
           const wait = keepTyping(chatId);
           await sleep(randomDelayMs());

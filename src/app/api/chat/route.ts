@@ -14,6 +14,7 @@ import {
   getFunnelStep,
   advanceFunnelStep,
   funnelPhotoForStep,
+  funnelPhotoLine,
   buildPaymentPayload,
 } from "@/lib/funnel";
 import {
@@ -293,9 +294,15 @@ export async function POST(request: Request): Promise<NextResponse> {
       // Força a foto da etapa (se houver) e, na etapa 4, gera o PIX real
       // (QR + copia-e-cola) no Asaas.
       const photo = photoTag ? await resolveFunnelPhoto(photoTag) : {};
-      let finalContent = photo.description
-        ? await refineReplyWithPhoto(reply, photo.description, provider)
-        : reply;
+      // Foto picante + moderação da IA = ela foge de falar da foto. Usa a fala
+      // padronizada (sem IA) sempre que houver foto forçada; o reply da IA fica
+      // pro texto geral da etapa quando não há foto.
+      let finalContent = reply;
+      if (photo.imageUrl && photoTag && photo.description) {
+        finalContent = funnelPhotoLine(photoTag, photo.description);
+      } else if (photo.description) {
+        finalContent = await refineReplyWithPhoto(reply, photo.description, provider);
+      }
 
       let qrImageUrl: string | undefined;
       let pixBubble: string | undefined;
@@ -312,16 +319,30 @@ export async function POST(request: Request): Promise<NextResponse> {
         } else {
           pixBubble = pay.text;
         }
-        // Se o Asaas entregou o QR salvo em disco, serve via /pix/<id>.png.
-        qrImageUrl = pay.publicUrl;
+        // QR em data URL (base64) — não depende de arquivo gravado em public/,
+        // que o filesystem efêmero da Vercel não serve. Se mesmo assim faltar,
+        // a chave copia-e-cola já vai no pixBubble (balão de texto), então o
+        // pagamento nunca fica sem meios de ser feito.
+        qrImageUrl = pay.qrBase64
+          ? `data:image/png;base64,${pay.qrBase64}`
+          : pay.publicUrl;
       }
 
       const bubbles = splitIntoBubbles(finalContent);
       // Na etapa 4 a foto forçada é vazia; o QR vai na msg do PIX abaixo.
-      await addMessage(CHAT_KEY, "assistant", finalContent, step === 4 ? undefined : photo.imageUrl, bubbles);
+      const msgPayload = step === 4 ? undefined : photo.imageUrl;
+      await addMessage(CHAT_KEY, "assistant", finalContent, msgPayload, bubbles);
       if (pixBubble) {
         // Mensagem dedicada ao pagamento: balão único com a chave inteira.
-        await addMessage(CHAT_KEY, "assistant", pixBubble, qrImageUrl, [pixBubble]);
+        // Se o QR falhar (sem base64 nem arquivo), o texto da chave ainda vai
+        // ser o fallback de imagem da mensagem (linha vazia => só o balão).
+        await addMessage(
+          CHAT_KEY,
+          "assistant",
+          pixBubble,
+          qrImageUrl ?? undefined,
+          [pixBubble]
+        );
       }
       if (photo.imageUrl && photo.description) {
         await rememberPhotoSent(CHAT_KEY, photo.description);

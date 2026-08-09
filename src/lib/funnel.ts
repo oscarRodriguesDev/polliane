@@ -98,6 +98,77 @@ export function funnelStageInstruction(step: number, userName?: string): string 
   }
 }
 
+/**
+ * Fala padronizada que acompanha a foto do funil — GERADA SEM IA.
+ *
+ * Por quê: quando a foto é picante/hot, os modelos de linguagem (moderação
+ * anti-pornografia) se recusam ou "desviam" de falar sobre ela, deixando a
+ * mensagem genérica. Aqui extraímos detalhes da `description` da foto e
+ * montamos uma fala natural da Pollianne a partir de TEMPLATES fixos — sempre
+ * cita a peça/pose específica, com vergonha e charme, sem depender do modelo.
+ */
+/**
+ * Extrai a "peça" de roupa ou a "pose" mais provável da descrição, pra ancorar
+ * a fala padronizada. Devolve { tipo: "peca" | "pose" | null, texto }.
+ */
+function extractVisualDetail(description: string): {
+  tipo: "peca" | "pose" | null;
+  texto: string;
+} {
+  const d = description.toLowerCase();
+  const pecas = [
+    "blusinha florida", "blusinha preta", "blusinha branca", "blusinha alcinha",
+    "blusinha", "vestidinho florido", "vestidinho", "vestido", "lingerie vermelha",
+    "lingerie", "calcinha", "camisola", "sainha jeans", "saia", "trança",
+    "óculos de grau", "oculos de grau", "baton rosado",
+  ];
+  for (const p of pecas) if (d.includes(p)) return { tipo: "peca", texto: p };
+
+  const poses = [
+    "na banheira", "no espelho", "deitada de ladinho", "deitada de lado",
+    "de costas", "de frente", "em pé", "deitada",
+  ];
+  for (const p of poses) if (d.includes(p)) return { tipo: "pose", texto: p };
+
+  return { tipo: null, texto: "" };
+}
+
+const FUNNEL_PHOTO_LINES: Record<string, string[]> = {
+  normal: [
+    "olha isso… acha que combina comigo? 💕 (fotografei agora)",
+    "tirei essa hoje, o que achou? tô sem vergonha, pode falar. 😌",
+  ],
+  hot_medium: [
+    "me conta, tá gostando do que tá vendo? 🫣 (nem mostro tudo ainda)",
+    "essa foi a mais ousadinha que tirei… será que eu mostro mais? 😏",
+  ],
+  hot: [
+    "hmm… será que você aguenta ver o resto? 👀 tô quase te mostrando tudo",
+    "é… eu tava com umas ideias na cabeça quando tirei essa. 🫦",
+  ],
+};
+
+// Prefixo natural da fala conforme o detalhe visual detectado. Peças entram
+// com "olha pra minha/essa…"; poses com "olha eu…".
+function visualPrefix(detalhe: { tipo: "peca" | "pose" | null; texto: string }): string {
+  if (detalhe.tipo === "peca") return `olha pra minha ${detalhe.texto}… `;
+  if (detalhe.tipo === "pose") return `olha eu ${detalhe.texto}… `;
+  return "";
+}
+
+/**
+ * Monta a fala que acompanha a foto do funil (etapas 0/2/3) usando a
+ * `description` real da foto + um template do nível. Devolve 1-2 frases,
+ * SEM chamar IA — a moderação dos modelos travaria fotos picantes.
+ */
+export function funnelPhotoLine(tag: string, description?: string): string {
+  const linhas = FUNNEL_PHOTO_LINES[tag] ?? FUNNEL_PHOTO_LINES.normal;
+  const detalhe = extractVisualDetail(description ?? "");
+  const linha = linhas[Math.floor(Math.random() * linhas.length)];
+  const prefixo = visualPrefix(detalhe);
+  return prefixo ? `${prefixo}${linha}` : linha;
+}
+
 // Texto dos dados de pagamento. Configurável por env (PAYMENT_INFO) ou padrão.
 export function paymentInfo(): string {
   return (
@@ -180,6 +251,7 @@ export async function getLastPaymentId(chatKey: string): Promise<string | null> 
 export async function buildPaymentPayload(chatKey: string): Promise<{
   text: string;
   qrBase64?: string;
+  qrCodeBase64?: string;
   filePath?: string;
   publicUrl?: string;
   paymentId?: string;
@@ -202,6 +274,7 @@ export async function buildPaymentPayload(chatKey: string): Promise<{
       text: savedText,
       filePath: typeof evid.pix_file_path === "string" ? evid.pix_file_path : undefined,
       publicUrl: typeof evid.pix_public_url === "string" ? evid.pix_public_url : undefined,
+      qrBase64: typeof evid.pix_qr_base64 === "string" ? evid.pix_qr_base64 : undefined,
       paymentId: existing,
     };
   }
@@ -228,6 +301,7 @@ export async function buildPaymentPayload(chatKey: string): Promise<{
     await setMemoryField(chatKey, "evidencias.pix_payment_id", pix.paymentId);
   }
   await setMemoryField(chatKey, "evidencias.pix_text", texto);
+  if (pix.qrCodeBase64) await setMemoryField(chatKey, "evidencias.pix_qr_base64", pix.qrCodeBase64);
   if (pix.filePath) await setMemoryField(chatKey, "evidencias.pix_file_path", pix.filePath);
   if (pix.publicUrl) await setMemoryField(chatKey, "evidencias.pix_public_url", pix.publicUrl);
   await setMemoryField(chatKey, "evidencias.pix_copy", pix.pixCopyPaste);
@@ -235,6 +309,7 @@ export async function buildPaymentPayload(chatKey: string): Promise<{
   return {
     text: texto,
     qrBase64: pix.qrCodeBase64,
+    qrCodeBase64: pix.qrCodeBase64,
     filePath: pix.filePath,
     publicUrl: pix.publicUrl,
     paymentId: pix.paymentId,

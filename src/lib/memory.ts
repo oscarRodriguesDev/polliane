@@ -68,6 +68,9 @@ export type ChatMemory = {
     pix_text?: string;
     pix_file_path?: string;
     pix_public_url?: string;
+    // QR do Pix em base64 (PNG) — pro web renderizar via data URL sem depender
+    // de arquivo gravado em public/ (filesystem efêmero em produção).
+    pix_qr_base64?: string;
     pix_copy?: string;
     // O conteúdo completo (todas as fotos) já foi entregue após o pagamento.
     conteudo_entregue?: boolean;
