@@ -21,6 +21,8 @@ import {
   enableSimulation,
   handleSimulatedPayment,
   isPaymentProof,
+  isNewContentRequest,
+  handleNewContentRequest,
 } from "@/lib/simulate";
 
 export const runtime = "nodejs";
@@ -254,6 +256,25 @@ export async function POST(request: Request): Promise<NextResponse> {
     return NextResponse.json({ messages: await getMessages(CHAT_KEY) });
   }
 
+  // Assinante (pago ou simulado) perguntando se tem conteúdo novo.
+  if (isNewContentRequest(message)) {
+    const r = await handleNewContentRequest(CHAT_KEY);
+    if (r.ok && r.temNovidade) {
+      const reply = "Trouxe as novidades pra você! 💖 Segue. 😘";
+      const bubbles = splitIntoBubbles(reply);
+      await addMessage(CHAT_KEY, "user", message);
+      await addMessage(CHAT_KEY, "assistant", reply, undefined, bubbles);
+      return NextResponse.json({ messages: await getMessages(CHAT_KEY) });
+    }
+    if (r.ok) {
+      const reply = "Por enquanto não saiu nada novo, bb. 💕 Mas se eu postar, você vai ser a primeira a saber!";
+      const bubbles = splitIntoBubbles(reply);
+      await addMessage(CHAT_KEY, "user", message);
+      await addMessage(CHAT_KEY, "assistant", reply, undefined, bubbles);
+      return NextResponse.json({ messages: await getMessages(CHAT_KEY) });
+    }
+  }
+
   await addMessage(CHAT_KEY, "user", message);
   await bumpMemoryStats(CHAT_KEY, 1, 1);
 
@@ -277,15 +298,31 @@ export async function POST(request: Request): Promise<NextResponse> {
         : reply;
 
       let qrImageUrl: string | undefined;
+      let pixBubble: string | undefined;
       if (step === 4) {
         const pay = await buildPaymentPayload(CHAT_KEY);
-        finalContent = `${finalContent}\n\n${pay.text}`;
+        // A fala da IA e o bloco de pagamento são separados: o bloco do PIX vai
+        // NUM BALÃO ÚNICO (a chave copia-e-cola tem pontos e o splitIntoBubbles
+        // cortaria no meio) + QR code como imagem da mensagem.
+        const linhas = (pay.text ?? "").split("\n");
+        const primeiroBanco = linhas.findIndex((l) => l.trim() !== "");
+        const idxCopia = linhas.findIndex((l) => /copia e cola/i.test(l));
+        if (idxCopia >= 0 && primeiroBanco >= 0) {
+          pixBubble = linhas.slice(idxCopia).join("\n");
+        } else {
+          pixBubble = pay.text;
+        }
         // Se o Asaas entregou o QR salvo em disco, serve via /pix/<id>.png.
         qrImageUrl = pay.publicUrl;
       }
 
       const bubbles = splitIntoBubbles(finalContent);
-      await addMessage(CHAT_KEY, "assistant", finalContent, photo.imageUrl ?? qrImageUrl, bubbles);
+      // Na etapa 4 a foto forçada é vazia; o QR vai na msg do PIX abaixo.
+      await addMessage(CHAT_KEY, "assistant", finalContent, step === 4 ? undefined : photo.imageUrl, bubbles);
+      if (pixBubble) {
+        // Mensagem dedicada ao pagamento: balão único com a chave inteira.
+        await addMessage(CHAT_KEY, "assistant", pixBubble, qrImageUrl, [pixBubble]);
+      }
       if (photo.imageUrl && photo.description) {
         await rememberPhotoSent(CHAT_KEY, photo.description);
       }

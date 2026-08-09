@@ -137,6 +137,24 @@ export async function updateFunnelStep(
 export async function markAsPaid(chatKey: string): Promise<void> {
   await setMemoryField(chatKey, "evidencias.assinante", true);
   await setMemoryField(chatKey, "evidencias.funnel_step", FUNNEL_FINAL_STEP);
+  // Regra de negócio: pagamento garante acesso por 1 SEMANA.
+  await setMemoryField(
+    chatKey,
+    "evidencias.conteudo_liberado_ate",
+    new Date(Date.now() + ACCESS_DURATION_MS).toISOString()
+  );
+}
+
+/** Duração do acesso pago: 7 dias. */
+export const ACCESS_DURATION_MS = 7 * 24 * 60 * 60 * 1000;
+
+/** A pessoa ainda tem acesso pago (dentro da 1 semana)? */
+export async function hasActiveAccess(chatKey: string): Promise<boolean> {
+  const mem = await getChatMemory(chatKey);
+  const ate = (mem.evidencias as unknown as Record<string, unknown>)
+    .conteudo_liberado_ate;
+  if (typeof ate !== "string" || !ate) return false;
+  return Date.now() < new Date(ate).getTime();
 }
 
 /** A pessoa já pagou / está liberada? */
@@ -197,11 +215,10 @@ export async function buildPaymentPayload(chatKey: string): Promise<{
   const texto = [
     "Pra me apoiar é rapidinho, amor:",
     "",
-    `💰 Valor: R$ ${Number(process.env.ASAAS_PIX_VALUE ?? "49.90").toFixed(2)}`,
-    `📲 PIX copia e cola (chave):`,
-    "```",
+    `💰 Valor: R$ ${Number(process.env.ASAAS_PIX_VALUE ?? "10").toFixed(2)}`,
+    `📲 PIX copia e cola (a chave toda da linha abaixo):`,
+    "",
     pix.pixCopyPaste,
-    "```",
     "",
     "Ou escaneia o QR code aqui do lado 💚",
     "Assim que o pagamento cair, eu libero TODO o conteúdo na hora pra você. 😘",

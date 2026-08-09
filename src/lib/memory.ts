@@ -71,6 +71,10 @@ export type ChatMemory = {
     pix_copy?: string;
     // O conteúdo completo (todas as fotos) já foi entregue após o pagamento.
     conteudo_entregue?: boolean;
+    // Último id de mídia (Supabase) entregue — pro bot só mandar "novos".
+    ultima_media_entregue_id?: number;
+    // Acesso pago vai até essa data (1 semana após o pagamento).
+    conteudo_liberado_ate?: string;
     // Modo simulação de pagamento ativo (testes sem pagamento real).
     modo_simulacao?: boolean;
   };

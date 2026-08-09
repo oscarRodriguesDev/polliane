@@ -30,7 +30,7 @@ export function asaasConfigured(): boolean {
   return API_KEY.length > 0;
 }
 
-export const ASAAS_PIX_VALUE = Number(process.env.ASAAS_PIX_VALUE ?? "49.90");
+export const ASAAS_PIX_VALUE = Number(process.env.ASAAS_PIX_VALUE ?? "10");
 export const ASAAS_DESCRIPTION =
   process.env.ASAAS_DESCRIPTION ?? "Acesso ao conteúdo completo da Pollianne";
 

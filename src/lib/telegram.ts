@@ -30,6 +30,8 @@ import {
   enableSimulation,
   handleSimulatedPayment,
   isPaymentProof,
+  isNewContentRequest,
+  handleNewContentRequest,
 } from "@/lib/simulate";
 
 const TELEGRAM_API = "https://api.telegram.org";
@@ -384,33 +386,65 @@ async function processMessage(
       // Etapa 4: gera o PIX real (QR + copia-e-cola). O QR vira foto enviada
       // por multipart (filePath salvo em public/pix).
       let qrFilePath: string | undefined;
+      let pixBubble: string | undefined;
       if (step === 4) {
         const pay = await buildPaymentPayload(chatKey);
-        finalContent = `${finalContent}\n\n${pay.text}`;
+        // A fala da IA e o bloco de pagamento vão separados: a chave Pix tem
+        // pontos e o splitIntoBubbles cortaria no meio.
+        const linhas = (pay.text ?? "").split("\n");
+        const idxCopia = linhas.findIndex((l) => /copia e cola/i.test(l));
+        pixBubble = idxCopia >= 0 ? linhas.slice(idxCopia).join("\n").trim() : pay.text;
         qrFilePath = pay.filePath;
       }
 
       const bubbles = splitIntoBubbles(finalContent);
-      await dbAddMessage(chatKey, "assistant", finalContent, photo.imageUrl, bubbles);
+      // Na etapa 4 a foto seguida é vazia; o QR vai na msg de pagamento abaixo.
+      await dbAddMessage(chatKey, "assistant", finalContent, step === 4 ? undefined : photo.imageUrl, bubbles);
       if (photo.description) await rememberPhotoSent(chatKey, photo.description);
 
       const [first, ...rest] = bubbles;
       typing.stop();
-      const qrCaption = qrFilePath ? first ?? finalContent : undefined;
       if (qrFilePath) {
-        await sendPhotoFile(chatId, qrFilePath, photoCaption(qrCaption ?? ""));
+        // Foto do QR + caption com a FALA da IA.
+        await sendPhotoFile(chatId, qrFilePath, photoCaption(first ?? finalContent));
+        for (const bubble of rest) {
+          const wait = keepTyping(chatId);
+          await sleep(randomDelayMs());
+          wait.stop();
+          await sendText(chatId, bubble);
+        }
+        // Bloco do PIX em UMA mensagem de texto única (chave inteira).
+        if (pixBubble) {
+          const wait = keepTyping(chatId);
+          await sleep(randomDelayMs());
+          wait.stop();
+          await sendText(chatId, pixBubble);
+          await dbAddMessage(chatKey, "assistant", pixBubble, undefined, [pixBubble]);
+        }
       } else if (photo.filePath) {
         await sendPhotoFile(chatId, photo.filePath, photoCaption(first ?? finalContent));
+        for (const bubble of rest) {
+          const wait = keepTyping(chatId);
+          await sleep(randomDelayMs());
+          wait.stop();
+          await sendText(chatId, bubble);
+        }
       } else if (photo.imageUrl) {
         await sendPhoto(chatId, photo.imageUrl, photoCaption(first ?? finalContent));
+        for (const bubble of rest) {
+          const wait = keepTyping(chatId);
+          await sleep(randomDelayMs());
+          wait.stop();
+          await sendText(chatId, bubble);
+        }
       } else {
         await sendText(chatId, first ?? finalContent);
-      }
-      for (const bubble of rest) {
-        const wait = keepTyping(chatId);
-        await sleep(randomDelayMs());
-        wait.stop();
-        await sendText(chatId, bubble);
+        for (const bubble of rest) {
+          const wait = keepTyping(chatId);
+          await sleep(randomDelayMs());
+          wait.stop();
+          await sendText(chatId, bubble);
+        }
       }
       await advanceFunnelStep(chatKey, step);
       return;
@@ -557,7 +591,26 @@ export async function handleTelegramUpdate(update: {
     return true;
   }
 
-  // Comprovante em modo simulação: se ativo, o bot se comporta como se o
+  // Assinante (pago ou simulado) perguntando se tem conteúdo novo: entrega o que
+// saiu. Sem acesso ativo, cai na resposta normal da IA.
+  if (isNewContentRequest(text)) {
+    const r = await handleNewContentRequest(chatKey);
+    if (!r.ok) {
+      // Não tem acesso ativo — deixa a IA responder naturalmente (funil etc).
+      // Nada a interceptar aqui.
+    } else if (r.temNovidade) {
+      await sendText(chatId, "Trouxe as novidades pra você! 💖 Segue. 😘");
+      return true;
+    } else {
+      await sendText(
+        chatId,
+        "Por enquanto não saiu nada novo, bb. 💕 Mas se eu postar, você vai ser a primeira a saber!"
+      );
+      return true;
+    }
+  }
+
+// Comprovante em modo simulação: se ativo, o bot se comporta como se o
   // pagamento tivesse sido confirmado e libera TODAS as fotos em massa.
   if (isPaymentProof(text) && (await isSimulationMode(chatKey))) {
     const mem = await getChatMemory(chatKey);

@@ -410,13 +410,13 @@ export default function Chat() {
                       />
                     )}
                     <div
-                      className={`max-w-[78%] whitespace-pre-wrap break-words px-4 py-2.5 text-sm leading-relaxed sm:max-w-[65%] ${
+                      className={`max-w-[78%] whitespace-pre-wrap px-4 py-2.5 text-sm leading-relaxed sm:max-w-[65%] ${
                         message.role === "user"
                           ? "rounded-2xl rounded-br-md bg-gradient-to-br from-violet-600 to-fuchsia-600 text-white shadow-lg shadow-violet-600/20"
                           : index === messages.length - 1 && i === bubbles.length - 1
                             ? "rounded-2xl rounded-bl-md bg-surface text-zinc-800 shadow-sm ring-1 ring-zinc-200/70 dark:text-zinc-100 dark:ring-zinc-700/50"
                             : "rounded-2xl rounded-bl-md bg-surface text-zinc-800 shadow-sm ring-1 ring-zinc-200/70 dark:text-zinc-100 dark:ring-zinc-700/50"
-                      }`}
+                      } ${/[a-z0-9]{60,}/i.test(bubble) ? "[overflow-wrap:anywhere]" : "break-words"}`}
                     >
                       {bubble}
                     </div>

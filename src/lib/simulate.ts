@@ -12,8 +12,8 @@
  * A senha vem de `SIMULATION_CODE` (env). Sem ela, nada disso funciona.
  */
 import { setMemoryField, updateChatMemory, getChatMemory } from "@/lib/memory";
-import { updateFunnelStep, markAsPaid } from "@/lib/funnel";
-import { deliverAllContent } from "@/lib/deliver";
+import { updateFunnelStep, markAsPaid, hasActiveAccess } from "@/lib/funnel";
+import { deliverAllContent, deliverNewContent } from "@/lib/deliver";
 
 export const SIMULATION_PASSWORD = process.env.SIMULATION_CODE ?? "";
 
@@ -22,6 +22,14 @@ const PROOF_RE = /\[foto-comprovante\]/i;
 
 export function isPaymentProof(text: string): boolean {
   return PROOF_RE.test(text);
+}
+
+/** Pedido de "tem conteúdo novo?" / "manda as novidades" — assinante pergunta. */
+const NEW_CONTENT_RE =
+  /(conteúdo novo|conteudo novo|coisa nova|algo novo|tem novidade|novidades|manda as novas|fotos novas|saiu (coisa|algo|foto|vídeo|video) nova|publicou (algo|coisa|foto) novo|foto nova)/i;
+
+export function isNewContentRequest(text: string): boolean {
+  return NEW_CONTENT_RE.test(text) && !isPaymentProof(text);
 }
 
 /** O chat está com o modo simulação de pagamento ativo? */
@@ -57,6 +65,28 @@ export async function enableSimulation(
 /** Desativa o modo simulação (ex.: após a entrega). */
 export async function disableSimulation(chatKey: string): Promise<void> {
   await setMemoryField(chatKey, "evidencias.modo_simulacao", false);
+}
+
+/**
+ * Trata o pedido de "conteúdo novo" de um assinante (pago ou simulado).
+ * Regras:
+ *   - Só entrega quem tem ACESSO ATIVO (pagamento real na 1 semana OU modo
+ *     simulação já concluído/pago).
+ *   - Se tem novidade (mídia nova no Supabase), envia o que saiu.
+ *   - Se não tem, avisa.
+ * Devolve { ok, temNovidade, entregues }.
+ */
+export async function handleNewContentRequest(
+  chatKey: string,
+  nome?: string
+): Promise<{ ok: boolean; temNovidade: boolean; entregues: number }> {
+  const acessoAtivo = await hasActiveAccess(chatKey);
+  const simulando = await isSimulationMode(chatKey);
+  if (!acessoAtivo && !simulando) {
+    return { ok: false, temNovidade: false, entregues: 0 };
+  }
+  const r = await deliverNewContent(chatKey, nome);
+  return { ok: true, temNovidade: r.entregues > 0, entregues: r.entregues };
 }
 
 /**
