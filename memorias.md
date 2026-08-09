@@ -1,5 +1,17 @@
 # Memórias (VIBECODE)
 
+## Sessão 50 — Conteúdo novo sob demanda + acesso pago de 1 semana + chave PIX completa (commit 3573ea7)
+
+- Pedido: quem paga tem acesso por 1 SEMANA; no modo simulação o usuário pode perguntar se há conteúdo novo e o bot manda o que saiu. Também corrigir a chave PIX cortada no web.
+- **Acesso de 1 semana** (`src/lib/funnel.ts`): `markAsPaid` grava `evidencias.conteudo_liberado_ate = now + 7 dias` (`ACCESS_DURATION_MS`); novo `hasActiveAccess(chatKey)` = ainda dentro da janela. Campo declarado no tipo `evidencias` (`memory.ts`).
+- **Conteúdo novo** (`src/lib/deliver.ts`): reescrito com `deliverAllContent` (entrega total, idempotente) e `deliverNewContent` (coleta mídias com id > `ultima_media_entregue_id` e entrega só os novos; atualiza o marcador). Mensagens `NEW_OPENING` ("Trouxe as novidades...") e `CLOSING` ("por enquanto é só isso... é só me pedir").
+- **Pedido de novidade** (`src/lib/simulate.ts`): `isNewContentRequest` (regex "tem conteúdo novo/novidades/coisa nova...") + `handleNewContentRequest` — quem tem `hasActiveAccess` ou `modo_simulacao` recebe a entrega; sem novidade avisa; sem acesso cai na IA normal. Integrado em `chat/route.ts` e `telegram.ts` antes dos handlers do comprovante.
+- **Chave PIX inteira**: `buildPaymentPayload` removeu os backticks markdown e separou a linha `📲 PIX copia e cola (a chave toda da linha abaixo):` + chave em balão único (sem `splitIntoBubbles` quebrar a chave de ~200+ chars). Valor default 49.90 → **R$ 10** (`ASAAS_PIX_VALUE=10` no `.env`; `asaas.ts`).
+- **Chat.tsx**: classe condicional `[overflow-wrap:anywhere]` quando o balão tem uma string longa contínua (chave PIX) — não estoura o layout do balão.
+- Testes (scripts descartados): simulador 21/21 ✓; `handleNewContentRequest` sem nova → `{temNovidade:false, entregues:0}` ✓; marcador rebaixado pra 0 → 21 novas entregues ✓ (deteção dispara).
+- Build OK. Commit+push `3573ea7` na main.
+- Pendências: webhook Asaas cadastrado + `ASAAS_*`/`SIMULATION_CODE` na Vercel; validar p.a. a p.a. a chave PIX no web.
+
 ## Sessão 49 — Pagamento PIX Asaas + liberação em massa + simulador (testes)
 
 ### Pagamento PIX (Asaas)

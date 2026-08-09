@@ -1,5 +1,17 @@
 # Checkpoints
 
+## Sessão 50 — Conteúdo novo sob demanda + acesso de 1 semana + chave PIX inteira
+
+- Estado: BUILD OK; commit `3573ea7` na main (push feito).
+- `deliver.ts`: **`deliverNewContent`** entrega só o que saiu desde `ultima_media_entregue_id` (rastreado por chat); mensagens `NEW_OPENING`/`CLOSING` ("por enquanto é só isso... se tiver novo, é só me pedir").
+- Funnl de negócio: `markAsPaid` agora grava `evidencias.conteudo_liberado_ate` (`ACCESS_DURATION_MS = 7 dias`); `hasActiveAccess` = ainda dentro da 1 semana.
+- `simulate.ts`: `handleNewContentRequest` — responde/entrega novidade só p/ quem tem acesso ativo OU modo simulação.
+- Web (`chat/route.ts`) + Telegram (`telegram.ts`): detectam pedido "tem conteúdo novo?"/novidades → entregam ou avisam "nada novo ainda".
+- Bug chave PIX: removidos backticks e enviado em BALÃO ÚNICO (linha do copia-e-cola completa); `Chat.tsx` quebra linhas longas (`[overflow-wrap:anywhere]`) pra chave ~200 chars não estourar o balão.
+- Valor default R$ 10 (`ASAAS_PIX_VALUE=10` no `.env`).
+- Testes: simulador 21/21 ✓; pedido novidade sem mídia nova → 0 entregues ✓; rebaixado marcador → 21 "novas" entregues ✓.
+- Pendências: cadastrar webhook no Asaas; `ASAAS_*` + `SIMULATION_CODE` no painel Vercel; validar chave PIX de ponta a ponta no web.
+
 ## Sessão 49 — Pagamento PIX Asaas + liberação em massa + simulador
 
 - Estado: BUILD OK.
