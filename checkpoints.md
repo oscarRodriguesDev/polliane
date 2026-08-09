@@ -1,5 +1,14 @@
 # Checkpoints
 
+## Sessão 44 — Fix: fotos não saíam (gate de intimidade intransponível)
+
+- Estado: BUILD OK.
+- Causa (via diag local): IA gerava `[[FOTO: ...]]`, extração funcionava, mas `pickResolvedMedia` bloqueava com `0.1% < min 15%` — chats reais têm nivel ≈ 0.1, então NENHUMA foto saía.
+- Fix `photoSource.ts`: `INTIMACY_PHOTO_MIN` 0.15 → **0.05** (0% ainda bloqueia); picantes afrouxadas 0.3/0.55/0.75 → 0.2/0.4/0.6 (amarradas ao nível).
+- Fix fallback: foto local devolve `filePath` + `publicUrl`; `telegram.ts` prioriza `sendPhotoFile` (multipart), sem URL relativa inválida.
+- Teste IA: nivel 0.1 → resolveu e devolveu URL Supabase ✓.
+- Pendência: validar runtime (web e Telegram).
+
 ## Sessão 43 — Recados entre pessoas + lealdade de fotos (feature completa)
 
 - Estado: BUILD OK (`prisma generate && next build`).

@@ -256,8 +256,12 @@ async function resolvePhotoTag(
       { enableUnsplash: true, intimacy }
     );
 
-    // Foto do Supabase ou local → URL pública, e a description volta pra a
-    // Polli saber o que está enviando.
+    // Foto do Supabase → URL pública. Foto LOCAL → devolve o filePath (o arquivo
+    // real do disco) usado no sendPhotoFile. A description volta pra a Polli
+    // saber o que está enviando.
+    if (result?.filePath) {
+      return { content, filePath: result.filePath, description: result.description };
+    }
     if (result?.publicUrl) {
       return { content, imageUrl: result.publicUrl, description: result.description };
     }

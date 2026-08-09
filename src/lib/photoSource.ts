@@ -18,16 +18,22 @@ import { pickLocalPhotoForScene, type LocalPhoto } from "@/lib/photos";
 export type MediaSourceResult =
   | { publicUrl: string; filePath?: undefined; remote?: undefined; description?: string }
   | { publicUrl?: undefined; filePath: string; remote?: undefined; description?: string }
+  | { publicUrl: string; filePath: string; remote?: undefined; description?: string }
   | { publicUrl?: undefined; filePath?: undefined; remote: true; description?: string }
   | null;
 
-// Solo o próprio canal: os REs do gate de intimidade. Valores conservadores:
-// sem intimidade a foto NÃO sai de jeito nenhum (nem leve); só com química a
-// mais picante é liberada. Controle fino fica no .env se quiser.
-export const INTIMACY_PHOTO_MIN = Number(process.env.INTIMACY_PHOTO_MIN ?? "0.15");
-export const INTIMACY_PICANTE_LEVE = Number(process.env.INTIMACY_PICANTE_LEVE ?? "0.3");
-export const INTIMACY_PICANTE_FORTE = Number(process.env.INTIMACY_PICANTE_FORTE ?? "0.55");
-export const INTIMACY_PICANTE_HOT = Number(process.env.INTIMACY_PICANTE_HOT ?? "0.75");
+// Gate de intimidade: o nível 0..1 (memory.sobre_o_usuario) protege a
+// progressão das fotos. Antes o mínimo estava em 0.15, mas o aprendizado da IA
+// costuma atribuir ~0.1 para conversas comuns (16-18 msgs), então NUNCA nada
+// saía. Agora:
+//   - INTIMACY_PHOTO_MIN (0.05): praticamente qualquer conversa com química
+//     mínima já libera foto LEVE/normal (proteção básica: 0% ainda bloqueia).
+//   - Picantes continuam amarradas no nível: só sobem conforme a intimidade.
+// Controle fino continua pelo .env se quiser.
+export const INTIMACY_PHOTO_MIN = Number(process.env.INTIMACY_PHOTO_MIN ?? "0.05");
+export const INTIMACY_PICANTE_LEVE = Number(process.env.INTIMACY_PICANTE_LEVE ?? "0.2");
+export const INTIMACY_PICANTE_FORTE = Number(process.env.INTIMACY_PICANTE_FORTE ?? "0.4");
+export const INTIMACY_PICANTE_HOT = Number(process.env.INTIMACY_PICANTE_HOT ?? "0.6");
 
 // Mapa: nível de intimidade (memory.sobre_o_usuario.nivel) -> máximo de ousadia.
 function intimacyCap(intimacy: number): MediaTag | null {
@@ -189,7 +195,10 @@ export async function pickResolvedMedia(
     localCap
   );
   if (local) {
-    return { publicUrl: local.publicUrl };
+    // Devolve publicUrl E filePath: no web o caminho /polli/... é servido pelo
+    // próprio app; no Telegram o arquivo é enviado via multipart (URL relativa
+    // não funciona fora do servidor).
+    return { publicUrl: local.publicUrl, filePath: local.filePath };
   }
 
   // 3) Nada local: se o caller permitir, marca geração remota (Unsplash).

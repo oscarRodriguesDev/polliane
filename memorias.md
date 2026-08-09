@@ -1,5 +1,16 @@
 # Memórias (VIBECODE)
 
+## Sessão 43 — Fotoss não saíam: gate de intimidade mais alto que o nível real
+- Queixa: o bot (web e Telegram) deixou de mandar fotos.
+- Diagnóstico real (scripts de diagnóstico locais): a IA gerava a tag `[[FOTO: leve/picante]]` normalmente, o parser extraía, mas o `pickResolvedMedia` bloqueava com `📵 intimidade 0.1% < min 15%`.
+- Causa raiz: os chats reais (`web`, `7861612103`) têm `nivel ≈ 0.1` na memória, enquanto `INTIMACY_PHOTO_MIN` estava em `0.15` → nenhuma foto saía, nem leve.
+- Fix em `src/lib/photoSource.ts`:
+  - `INTIMACY_PHOTO_MIN` 0.15 → **0.05** (quase qualquer conversa com química mínima já manda foto leve; 0% ainda bloqueia).
+  - Curvas picantes afrouxadas: `LEVE` 0.3→0.2, `FORTE` 0.55→0.4, `HOT` 0.75→0.6 (continuam amarradas no nível — só homem, não pra qualquer um).
+- Fix de fallback em `photoSource.ts` + `telegram.ts`: foto local agora retorna `filePath` junto; o Telegram usa `sendPhotoFile` (multipart) em vez de URL relativa inválida.
+- Teste real via IA (openai): `[[FOTO: leve]]` gerada → com `nivel 0.1` resolveu e devolveu URL pública do Supabase ✓.
+- Build OK. Validação runtime com o usuário (web e Telegram).
+
 ## Sessão 1 — Chat Pollianne (API + IA)
 - Criado `src/lib/ai.ts`: lê `personalidade.md`, monta system prompt PT-BR, `generateReply` chama NVIDIA `nvidia/llama-3.3-70b-instruct` (temp 0.8, max_tokens 600).
 - Criado `src/app/api/chat/route.ts`: `runtime="nodejs"`, GET e POST /api/chat com conversa fixa id=1.
