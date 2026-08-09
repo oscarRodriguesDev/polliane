@@ -158,6 +158,17 @@ export default function Chat() {
     void loadMessages();
   }, [loadMessages]);
 
+  // Polling leve: recarrega o histórico em segundo plano para capturar
+  // mensagens que chegam sem ação do usuário — ex.: a liberação automática de
+  // TODAS as fotos após o pagamento PIX ser confirmado no Asaas.
+  useEffect(() => {
+    const timer = setInterval(() => {
+      if (loading) return; // não interrompe o envio/geração em andamento
+      void loadMessages();
+    }, 8000);
+    return () => clearInterval(timer);
+  }, [loading, loadMessages]);
+
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const content = input.trim();

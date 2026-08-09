@@ -69,6 +69,8 @@ export type ChatMemory = {
     pix_file_path?: string;
     pix_public_url?: string;
     pix_copy?: string;
+    // O conteúdo completo (todas as fotos) já foi entregue após o pagamento.
+    conteudo_entregue?: boolean;
   };
 };
 

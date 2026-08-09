@@ -1,13 +1,17 @@
 # Checkpoints
 
-## Sessão 49 — Pagamento PIX via Asaas (etapa 4 do funil gera QR real)
+## Sessão 49 — Pagamento PIX via Asaas + liberação automática do conteúdo
 
-- Estado: BUILD OK. Teste real (produção) passou: customer criado, cobrança PENDING, QR PNG salvo em `public/pix/`, copia-e-cola, `getPaymentStatus`, `markAsPaid` → `assinante=true` + step 5.
-- Novo `src/lib/asaas.ts` + `src/app/api/asaas/webhook/route.ts`; `funnel.ts buildPaymentPayload`, `markAsPaid`, `isPaidSubscriber`, `getLastPaymentId`; `memory.ts` ganhou `assinante`, `pix_*`.
-- Etapa 4 (web + Telegram) agora anexa o QR real: web usa `publicUrl` na mensagem; Telegram envia `filePath` via `sendPhotoFile`.
-- Webhook com validação dupla (consulta a API antes de liberar). Token opcional `ASAAS_WEBHOOK_KEY`.
-- `.env` novos: `ASAAS_API_KEY`, `ASAAS_CNPJ` (obrigatório pra PIX), `ASAAS_PIX_VALUE` (default 49.90), `ASAAS_WEBHOOK_KEY`, `ASAAS_SANDBOX`.
-- Pendências: cadastrar o webhook no painel Asaas apontando pra `/api/asaas/webhook`; validar fluxo completo (5 etapas + pagamento real) no web/TG.
+- Estado: BUILD OK. Testes reais (produção) passaram:
+  - Cobrança PIX criada (customer + CNPJ + valor 49.90), QR PNG salvo em `public/pix/`, copia-e-cola retornado.
+  - `getPaymentStatus` → status + externalReference; `markAsPaid` → `assinante=true` + step 5.
+  - Contagem de conteúdo a liberar: 21 mídias image no Supabase (hot:9, hot_medium:7, normal:5) + 8 locais (fallback).
+- `src/lib/asaas.ts`: cliente v3 (produção; `ASAAS_SANDBOX=true` p/ sandbox). `createPixCharge`, `getPaymentStatus`, `isPaidStatus`, `isPaidEvent`.
+- `src/app/api/asaas/webhook/route.ts`: valida token opcional, VALIDAÇÃO DUPLA (consulta a API antes de liberar), `markAsPaid` + entrega em massa via `waitUntil` (Vercel) pra não morrer no freeze.
+- `src/lib/deliver.ts` (novo): `deliverAllContent(chatKey)` — coleta TODAS as fotos (Supabase 1º, local fallback), envia uma a uma (Telegram multipart/URL, web grava histórico), idempotente via `conteudo_entregue`.
+- `src/components/Chat.tsx`: polling leve a cada 8s — web detecta a liberação sem recarregar/esperar a próxima mensagem.
+- Nota: NÃO existe integração WhatsApp no projeto (somente web + Telegram).
+- Pendências: cadastrar webhook no painel Asaas (`/api/asaas/webhook`, eventos PAYMENT_CONFIRMED/RECEIVED); validar liberação real no web/TG; configurar `ASAAS_*` no painel da Vercel.
 
 ## Sessão 48 — Modo FUNIL de vendas (bot simplificado, sem memória)
 

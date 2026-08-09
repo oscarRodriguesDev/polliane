@@ -6,6 +6,7 @@ import {
   isPaidStatus,
 } from "@/lib/asaas";
 import { markAsPaid } from "@/lib/funnel";
+import { deliverAllContent } from "@/lib/deliver";
 
 export const runtime = "nodejs";
 
@@ -69,5 +70,23 @@ export async function POST(request: Request): Promise<NextResponse> {
 
   await markAsPaid(chatKey);
   console.log(`💚 Pagamento confirmado (Asaas) — conteúdo liberado pro chat "${chatKey}"`);
+
+  // Libera TODAS as fotos de uma vez pra pessoa (Telegram envia na hora; web
+  // grava no histórico). Sem bloqueio pro Asaas, mas sem morte por freeze:
+  // `waitUntil` (Vercel) mantém a função viva até a entrega terminar.
+  // A flag `conteudo_entregue` no deliverAllContent torna o processo idempotente.
+  const entrega = () =>
+    deliverAllContent(chatKey).catch((e) =>
+      console.error(`Falha ao entregar conteúdo pro chat "${chatKey}":`, e)
+    );
+  const g = globalThis as unknown as {
+    waitUntil?: (p: Promise<unknown>) => void;
+  };
+  if (typeof g.waitUntil === "function") {
+    g.waitUntil(entrega());
+  } else {
+    void entrega();
+  }
+
   return NextResponse.json({ ok: true, received: true, action: "liberated" });
 }

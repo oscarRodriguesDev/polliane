@@ -19,6 +19,17 @@
 - `.env` novos: `ASAAS_API_KEY`, `ASAAS_CNPJ`, `ASAAS_PIX_VALUE` (opcional), `ASAAS_WEBHOOK_KEY` (opcional), `ASAAS_SANDBOX` (opcional).
 - Pendência: cadastrar webhook no painel Asaas apontando pra `/api/asaas/webhook`.
 
+### Liberação automática do conteúdo pós-pagamento (entrega em massa)
+- Pedido: quando o pagamento for aprovado/recebido, liberar TODAS as fotos de uma vez pro usuário (web + Telegram).
+- Novo `src/lib/deliver.ts`: `deliverAllContent(chatKey)` — coleta TODAS as fotos (Supabase 1ª, local `public/polli` fallback), envia uma a uma:
+  - Telegram (chatKey numérica): `sendPhotoFile`/`sendPhoto` + mensagem de abertura e encerramento carinhosos; delay 350ms entre fotos (ritmo + rate limit).
+  - Web (chatKey "web"): grava no histórico (`addMessage`) — aparece no polling.
+  - Idempotente: flag `evidencias.conteudo_entregue` impede reenvio (webhook repetido não duplica).
+- Webhook: após `markAsPaid`, dispara a entrega via `waitUntil` quando disponível (Vercel, evita freeze matando a entrega) senão fire-and-forget.
+- `Chat.tsx`: polling leve de 8s — o web detecta a liberação automática sem recarregar manualmente.
+- Conteúdo atual no Supabase: 21 imagens (hot:9, hot_medium:7, normal:5); fallback local: 8 fotos (3 leves + 5 picantes).
+- ⚠️ Não há integração WhatsApp no projeto — somente web e Telegram.
+
 ## Sessão 48 — Modo FUNIL de vendas (bot simplificado, sem memória acumulada)
 - Pedido: simplificar o bot — ele vira vendedor de conteúdo. Sem guardar memória/perfil. IA só dá naturalidade.
 - Roteiro fixo (FUNNEL_MODE=1 ativo no .env):
