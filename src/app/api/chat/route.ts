@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { generateReply, generateWakeReply, updateLearningFromHistory, type HistoryMessage, type Provider } from "@/lib/ai";
+import { generateReply, generateWakeReply, updateLearningFromHistory, refineReplyWithPhoto, type HistoryMessage, type Provider } from "@/lib/ai";
 import { generateImage } from "@/lib/image";
 import { applyEmotionChange, getEmotionalState } from "@/lib/state";
 import { pickResolvedMedia } from "@/lib/photoSource";
@@ -195,11 +195,14 @@ export async function POST(request: Request): Promise<NextResponse> {
     }
 
     const { content, imageUrl, description } = await resolvePhotoTag(parsed.content, message);
-    const bubbles = splitIntoBubbles(content);
-    await addMessage(CHAT_KEY, "assistant", content, imageUrl, bubbles);
+    // O bot SABE o que está enviando: quando a foto veio do banco com descrição
+    // real, reescreve a resposta pra falar DESTA foto (não de qualquer uma).
+    const finalContent = imageUrl && description ? await refineReplyWithPhoto(content, description, provider) : content;
+    const bubbles = splitIntoBubbles(finalContent);
+    await addMessage(CHAT_KEY, "assistant", finalContent, imageUrl, bubbles);
     await bumpMemoryStats(CHAT_KEY, 0, 1);
     if (imageUrl) await rememberPhotoSent(CHAT_KEY, description);
-    applyMoodDrift(message, content);
+    applyMoodDrift(message, finalContent);
     // Personalidade flexível: a Pollianne reescreve o que aprendeu sobre a pessoa.
     await updateLearningFromHistory(history, provider, CHAT_KEY);
   } catch (error) {

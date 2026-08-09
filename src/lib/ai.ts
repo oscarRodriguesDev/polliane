@@ -703,6 +703,84 @@ async function produceLearning(
   return null;
 }
 
+// ---------------------------------------------------------------------------
+// RESPOSTA COERENTE COM A FOTO (o bot "sabe" o que está enviando)
+// ---------------------------------------------------------------------------
+// A foto é escolhida DEPOIS da resposta ser gerada. Para a Polli falar
+// exatamente da foto que vai (e não de qualquer uma), quando houver uma
+// `description` real da mídia escolhida reescrevemos a resposta com essa
+// informação. Se falhar, mantém o texto original (nunca deixa de responder).
+
+async function producePhotoAwareReply(
+  originalReply: string,
+  photoDescription: string,
+  provider: Provider
+): Promise<string | null> {
+  const messages: ApiMessage[] = [
+    {
+      role: "system",
+      content:
+        "Você é Pollianne, uma garota de 17 anos que manda fotos suas pro cara de forma natural, com vergonha e charme." +
+        "Você vai mandar uma foto AGORA. Uma foto já foi escolhada e a DESCRIÇÃO REAL dela é informada abaixo." +
+        "Reescreva o SEU texto final (a resposta que acompanha a foto) para casar perfeitamente com essa foto: " +
+        "fale DESTA foto (como se você tivesse tirado ela agora), com o seu jeito (gírias de celular, +-1-3 frases curtas, um pouco de vergonha). " +
+        "Não enumere a foto nem diga que é 'descritor' — apenas faça a fala natural que acompanha o envio dessa imagem específica.",
+    },
+    {
+      role: "user",
+      content: `O texto que eu ia mandar: "${originalReply}"\n\nA foto que vou te mandar DE VERDADE — descrição: "${photoDescription}"`,
+    },
+  ];
+
+  const openaiKey = process.env.OPENAI_API_KEY ?? process.env.OPENIAI_API_KEY;
+  const nvidiaKey = process.env.KEY_NVIDIA;
+  const openRouterKey =
+    process.env.OPENROUTER_API_KEY ?? process.env.OPENROUTER_API ?? process.env.OPEN_ROUTER_API;
+
+  const errors: string[] = [];
+  if (provider === "deepseek") {
+    const r = nvidiaKey ? await tryNvidia(nvidiaKey, messages, errors) : null;
+    if (r) return r;
+    const g = openRouterKey ? await tryOpenRouter(openRouterKey, messages, errors) : null;
+    if (g) return g;
+    const o = openaiKey ? await tryOpenAI(openaiKey, messages, errors) : null;
+    if (o) return o;
+  } else if (provider === "grok") {
+    const g = openRouterKey ? await tryOpenRouter(openRouterKey, messages, errors) : null;
+    if (g) return g;
+    const r = nvidiaKey ? await tryNvidia(nvidiaKey, messages, errors) : null;
+    if (r) return r;
+    const o = openaiKey ? await tryOpenAI(openaiKey, messages, errors) : null;
+    if (o) return o;
+  } else {
+    const o = openaiKey ? await tryOpenAI(openaiKey, messages, errors) : null;
+    if (o) return o;
+    const r = nvidiaKey ? await tryNvidia(nvidiaKey, messages, errors) : null;
+    if (r) return r;
+    const g = openRouterKey ? await tryOpenRouter(openRouterKey, messages, errors) : null;
+    if (g) return g;
+  }
+  console.warn("Refinamento com a foto falhou:", errors.join(" | "));
+  return null;
+}
+
+// Aplica o refinamento quando a foto tem descrição real. Devolve o texto
+// final (novo ou o original se algo falhar).
+export async function refineReplyWithPhoto(
+  original: string,
+  photoDescription: string,
+  provider: Provider = "openai"
+): Promise<string> {
+  const desc = photoDescription?.trim();
+  if (!original || !desc) return original;
+  try {
+    const refined = await producePhotoAwareReply(original, desc, provider);
+    return refined?.trim() ? refined.trim() : original;
+  } catch {
+    return original;
+  }
+}
+
 // Analisa o histórico e, se houver conteúdo novo suficiente, reescreve o que a
 // Pollianne aprendeu sobre o usuário desta conversa (persistido no banco).
 // Deve ser chamado após cada troca de mensagem (web e Telegram).

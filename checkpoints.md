@@ -1,5 +1,13 @@
 # Checkpoints
 
+## Sessão 45 — Bot "sabe" a descrição da foto enviada (web + Telegram)
+
+- Estado: BUILD OK.
+- Causa: foto escolhida depois da resposta; `description` só valia no próximo prompt → o bot falava genérico e não da foto real.
+- Fix: `ai.ts` → `refineReplyWithPhoto` reescreve a resposta com a descrição REAL; `chat/route.ts` e `telegram.ts` chamam após resolver a foto; `photoCaption` no Telegram anexa `_(description)_`.
+- Teste: resposta bateu com a descrição ✓; moderação pode recusar em caso +18 → fallback mantém original.
+- Pendência: validar runtime (web e Telegram).
+
 ## Sessão 44 — Fix: fotos não saíam (gate de intimidade intransponível)
 
 - Estado: BUILD OK.

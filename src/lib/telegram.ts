@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { generateReply, generateWakeReply, updateLearningFromHistory, type HistoryMessage, type Provider } from "@/lib/ai";
+import { generateReply, generateWakeReply, updateLearningFromHistory, refineReplyWithPhoto, type HistoryMessage, type Provider } from "@/lib/ai";
 import { generateImage } from "@/lib/image";
 import { applyEmotionChange, getEmotionalState } from "@/lib/state";
 import { pickResolvedMedia } from "@/lib/photoSource";
@@ -61,6 +61,16 @@ function randomDelayMs(): number {
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// Caption da foto: texto da resposta + (se existir) a descrição REAL da imagem
+// em itálico, pra o destinatário saber o que veio — e o bot "saber" o que mandou.
+function photoCaption(text: string, description?: string): string {
+  const desc = description?.trim();
+  const len = text.length + (desc ? desc.length + 4 : 0);
+  const limit = 1024 * 4; // limite do Telegram por caption
+  const base = len > limit ? text.slice(0, Math.max(0, limit - (desc?.length ?? 0))) : text;
+  return desc ? `${base}\n\n_(${desc})_` : base;
 }
 
 // Token do bot lido do .env (TELEGRAM_BOT_TOKEN).
@@ -333,22 +343,28 @@ async function processMessage(
     }
 
     const { content, imageUrl, filePath, description } = await resolvePhotoTag(chatId, parsed.content, userMessage);
-    const bubbles = splitIntoBubbles(content);
-    await dbAddMessage(chatKey, "assistant", content, imageUrl, bubbles);
+    // O bot SABE o que está enviando: com a descrição real da foto escolhida,
+    // reescreve a resposta pra falar DESTA foto (não de uma foto qualquer).
+    const finalContent =
+      (imageUrl || filePath) && description
+        ? await refineReplyWithPhoto(content, description, provider)
+        : content;
+    const bubbles = splitIntoBubbles(finalContent);
+    await dbAddMessage(chatKey, "assistant", finalContent, imageUrl, bubbles);
     await bumpMemoryStats(chatKey, 0, 1);
-    if (imageUrl) await rememberPhotoSent(chatKey, description);
-    applyMoodDrift(userMessage, content);
+    if (imageUrl || filePath) await rememberPhotoSent(chatKey, description);
+    applyMoodDrift(userMessage, finalContent);
 
     // Envia os balões. Desligamos o typing ANTES de cada envio, para o
     // "digitando..." sumir no mesmo instante em que a mensagem "chega" —
     // fluxo de chat normal (sem mensagem sumindo nem 3 de uma vez).
     const [first, ...rest] = bubbles;
     typing.stop(); // digitando para antes da 1ª mensagem
-    const caption = first ?? content;
+    const caption = first ?? finalContent;
     if (filePath) {
-      await sendPhotoFile(chatId, filePath, caption);
+      await sendPhotoFile(chatId, filePath, photoCaption(caption, description));
     } else if (imageUrl) {
-      await sendPhoto(chatId, imageUrl, caption);
+      await sendPhoto(chatId, imageUrl, photoCaption(caption, description));
     } else {
       await sendText(chatId, caption);
     }
