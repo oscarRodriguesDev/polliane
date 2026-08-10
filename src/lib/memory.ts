@@ -58,6 +58,38 @@ export type ChatMemory = {
     primeira_foto: boolean;
     // Descrição da última foto enviada (a Polli "sabe" o que mandou).
     ultima_foto_desc?: string;
+    // Etapa atual do funil de vendas (modo FUNNEL_MODE), quando ativo.
+    funnel_step?: number;
+    // Assinante PAGO (conteúdo liberado).
+    assinante?: boolean;
+    // Última cobrança PIX criada no Asaas (pro webhook casar o pedido).
+    pix_payment_id?: string;
+    // Payload do PIX salvo pra reexibir sem criar cobrança duplicada.
+    pix_text?: string;
+    pix_file_path?: string;
+    pix_public_url?: string;
+    // QR do Pix em base64 (PNG) — pro web renderizar via data URL sem depender
+    // de arquivo gravado em public/ (filesystem efêmero em produção).
+    pix_qr_base64?: string;
+    pix_copy?: string;
+    // O conteúdo completo (todas as fotos) já foi entregue após o pagamento.
+    conteudo_entregue?: boolean;
+    // Último id de mídia (Supabase) entregue — pro bot só mandar "novos".
+    ultima_media_entregue_id?: number;
+    // Acesso pago vai até essa data (1 semana após o pagamento).
+    conteudo_liberado_ate?: string;
+    // Modo simulação de pagamento ativo (testes sem pagamento real).
+    modo_simulacao?: boolean;
+    // Origem da primeira aquisição (canal que trouxe a pessoa, via ?start=<canal>).
+    origem?: string;
+    // Última origem vista (deep link mais recente).
+    origem_ultima?: string;
+    // Quando a pessoa chegou na etapa 4 do funil (aguardando pagamento) — p/ reativação.
+    funnel_etapa4_desde?: string;
+    // Já enviamos a mensagem de reativação da etapa 4?
+    reativacao_etapa4_enviada?: boolean;
+    // Já enviamos a mensagem de renovação (acesso vencido)?
+    renovacao_enviada?: boolean;
   };
 };
 
@@ -96,7 +128,7 @@ export function emptyMemory(): ChatMemory {
       nivel: 0,
     },
     estado_emocional: {},
-    preferencias_conversa: { provedor_atual: "openai" },
+    preferencias_conversa: { provedor_atual: "deepseek" },
     aprendizados_genericos: {},
     evidencias: {
       total_mensagens: 0,
@@ -111,7 +143,7 @@ export function emptyGlobalMemory(): GlobalMemory {
     versao: 1,
     atualizado_em: null,
     identidade:
-      "Pollianne Bitencourt, 17 anos, fotógrafa freelancer, mora sozinha, tem a gata Dandara.",
+      "Pollianne Bitencourt, 21 anos, fotógrafa freelancer, mora sozinha, tem a gata Dandara.",
     pessoas_conhecidas: [],
     relacionamento_atual: null,
     fatos_da_vida: {},

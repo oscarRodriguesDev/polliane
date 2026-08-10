@@ -17,7 +17,7 @@ type ChatResponse = {
   error?: string;
 };
 
-type Provider = "openai" | "deepseek" | "grok";
+type Provider = "deepseek" | "grok";
 
 const SUGGESTIONS = [
   "Ei, conta uma coisa engraçada do teu dia",
@@ -43,8 +43,8 @@ export default function Chat() {
   const [revealing, setRevealing] = useState(false);
   // Inicia sempre dark (igual ao SSR) e corrige após o mount para evitar hydration mismatch.
   const [dark, setDark] = useState<boolean>(true);
-  // Provedor de IA: "openai" (gpt-4o-mini, mais moderado) ou "deepseek" (sem travas, mais picante).
-  const [provider, setProvider] = useState<Provider>("openai");
+  // Provedor de IA: "deepseek" (sem travas, mais picante) ou "grok".
+  const [provider, setProvider] = useState<Provider>("deepseek");
   const endRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
   // Último id de mensagem do bot que já foi revelado (evita animar no load inicial).
@@ -72,7 +72,7 @@ export default function Chat() {
   // Lê o provedor salvo no mount.
   useEffect(() => {
     const saved = localStorage.getItem("provider");
-    if (saved === "deepseek" || saved === "openai" || saved === "grok") {
+    if (saved === "deepseek" || saved === "grok") {
       setProvider(saved);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -158,6 +158,17 @@ export default function Chat() {
     void loadMessages();
   }, [loadMessages]);
 
+  // Polling leve: recarrega o histórico em segundo plano para capturar
+  // mensagens que chegam sem ação do usuário — ex.: a liberação automática de
+  // TODAS as fotos após o pagamento PIX ser confirmado no Asaas.
+  useEffect(() => {
+    const timer = setInterval(() => {
+      if (loading) return; // não interrompe o envio/geração em andamento
+      void loadMessages();
+    }, 8000);
+    return () => clearInterval(timer);
+  }, [loading, loadMessages]);
+
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const content = input.trim();
@@ -193,19 +204,15 @@ export default function Chat() {
   }
 
   function cycleProvider() {
-    setProvider((prev) =>
-      prev === "openai" ? "deepseek" : prev === "deepseek" ? "grok" : "openai"
-    );
+    setProvider((prev) => (prev === "deepseek" ? "grok" : "deepseek"));
   }
 
   const providerLabel: Record<Provider, string> = {
-    openai: "OpenAI",
     deepseek: "DeepSeek",
     grok: "Grok",
   };
 
   const providerInfo: Record<Provider, string> = {
-    openai: "OpenAI: respostas naturais e moderadas.",
     deepseek: "DeepSeek: sem travas, mais picante.",
     grok: "Grok (OpenRouter): inteligente e picante.",
   };
@@ -399,13 +406,13 @@ export default function Chat() {
                       />
                     )}
                     <div
-                      className={`max-w-[78%] whitespace-pre-wrap break-words px-4 py-2.5 text-sm leading-relaxed sm:max-w-[65%] ${
+                      className={`max-w-[78%] whitespace-pre-wrap px-4 py-2.5 text-sm leading-relaxed sm:max-w-[65%] ${
                         message.role === "user"
                           ? "rounded-2xl rounded-br-md bg-gradient-to-br from-violet-600 to-fuchsia-600 text-white shadow-lg shadow-violet-600/20"
                           : index === messages.length - 1 && i === bubbles.length - 1
                             ? "rounded-2xl rounded-bl-md bg-surface text-zinc-800 shadow-sm ring-1 ring-zinc-200/70 dark:text-zinc-100 dark:ring-zinc-700/50"
                             : "rounded-2xl rounded-bl-md bg-surface text-zinc-800 shadow-sm ring-1 ring-zinc-200/70 dark:text-zinc-100 dark:ring-zinc-700/50"
-                      }`}
+                      } ${/[a-z0-9]{60,}/i.test(bubble) ? "[overflow-wrap:anywhere]" : "break-words"}`}
                     >
                       {bubble}
                     </div>

@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { generateReply, generateWakeReply, updateLearningFromHistory, type HistoryMessage, type Provider } from "@/lib/ai";
+import { generateReply, generateWakeReply, updateLearningFromHistory, refineReplyWithPhoto, type HistoryMessage, type Provider } from "@/lib/ai";
 import { generateImage } from "@/lib/image";
 import { applyEmotionChange, getEmotionalState } from "@/lib/state";
 import { pickResolvedMedia } from "@/lib/photoSource";
@@ -11,15 +11,64 @@ import {
   addMessage as dbAddMessage,
   resetConversation,
 } from "@/lib/history";
-import { bumpMemoryStats, getChatMemory, rememberPhotoSent } from "@/lib/memory";
+import { bumpMemoryStats, getChatMemory, rememberPhotoSent, setMemoryField } from "@/lib/memory";
 import { extractEntregarTag, addRecado, isCasadaComEsteChat, isPicanteScene } from "@/lib/recados";
 import {
   isAwake,
   parseWakeCommand,
   buildWakeStatus,
 } from "@/lib/wake";
+import {
+  funnelEnabled,
+  getFunnelStep,
+  advanceFunnelStep,
+  funnelPhotoForStep,
+  funnelPhotoLine,
+  funnelScriptForStep,
+  buildPaymentPayload,
+} from "@/lib/funnel";
+import {
+  isSimulationMode,
+  enableSimulation,
+  handleSimulatedPayment,
+  isPaymentProof,
+  isNewContentRequest,
+  handleNewContentRequest,
+  pendingPaymentProofReply,
+} from "@/lib/simulate";
 
 const TELEGRAM_API = "https://api.telegram.org";
+
+// Mensagens de boas-vindas (/start): todas fazem a MESMA introdução (nome,
+// idade, pergunta pelo nome), só com jeitos de falar diferentes — sorteia uma
+// aleatória a cada /start pra não parecer mensagem decorada.
+const START_MESSAGES: string[] = [
+  "Ola, Meu  nome é Polianne, tenho 21 anos e você, como se chama?",
+  "Oie, eu sou a Polianne, tenho 21 anos. E você, me conta seu nome?",
+  "Oi! Me chamo Polianne, tenho 21 anos. E o seu nome, qual é?",
+  "Oii, prazer! Sou a Polianne, 21 anos. Como você se chama?",
+  "Oi! Eu sou a Polli, tenho 21 aninhos. E você, qual seu nome?",
+  "Olaa! Meu nome é Polianne, tenho 21 anos. E você, como te chamam?",
+  "Oi, tudo bem? Sou a Polianne, tenho 21 anos. Qual é o seu nome?",
+  "Oiii, me chamo Polianne, tenho 21 anos. E aí, como você se chama?",
+  "Oi! Sou a Polianne, 21 anos. Me fala seu nome, quero saber com quem tô falando.",
+  "Ola, meu nome é Polianne, tenho 21 anos 😊 e você? Qual é seu nome?",
+  "Oiee! Polianne aqui, 21 anos. E você, como se chama?",
+  "Oi, oi! Eu sou a Polianne, tenho 21 anos. Quem eu tô falando com você?",
+  "Ola! Prazer, sou Polianne, 21 anos. E você, me conta o seu nome?",
+  "Oi! Meu nome é Polianne, tenho 21 anos. Qual é o seu nome, moço(a)?",
+  "Oiii, eu sou a Polianne, de 21 anos. E aí, qual seu nome?",
+  "Oi! Tô aqui a Polianne, 21 anos. E você, como te chamo?",
+  "Ola! Sou a Polli, tenho 21 anos. E você, primeiro: qual é seu nome?",
+  "Oiii! Me chamo Polianne, tenho 21 anos. Me diz, qual é o seu nome?",
+  "Oi! A Polianne aqui, 21 anos. E você, como se chama? Quero saber!",
+  "Ola, tudo certo? Sou Polianne, tenho 21 anos. E você, qual é o seu nome?",
+];
+
+// Sorteia uma mensagem de boas-vindas aleatória (0..n-1).
+function pickStartMessage(): string {
+  return START_MESSAGES[Math.floor(Math.random() * START_MESSAGES.length)];
+}
 
 // Delay curto e aleatório entre os balões — ritmo humano de pensamento, mas
 // SEM fazer a resposta demorar demais. A demora de ~1 minuto não era esse
@@ -32,15 +81,23 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+// Caption da foto: só o texto de resposta da Polli, limitado ao máximo do
+// Telegram. A descrição NÃO é anexada — a IA já a transformou em fala natural
+// (sr ex.: "o que achou da minha blusinha preta?").
+function photoCaption(text: string, _description?: string): string {
+  const limit = 1024 * 4; // limite do Telegram por caption
+  return text.length > limit ? text.slice(0, limit) : text;
+}
+
 // Token do bot lido do .env (TELEGRAM_BOT_TOKEN).
 export function getBotToken(): string {
   return process.env.TELEGRAM_BOT_TOKEN ?? "";
 }
 
-// Provedor padrão definido no ambiente (DEFAULT_PROVIDER) ou "openai".
+// Provedor padrão definido no ambiente (DEFAULT_PROVIDER) ou "deepseek".
 function defaultProvider(): Provider {
-  const p = (process.env.DEFAULT_PROVIDER ?? "openai").toLowerCase();
-  return p === "deepseek" || p === "grok" ? p : "openai";
+  const p = (process.env.DEFAULT_PROVIDER ?? "deepseek").toLowerCase();
+  return p === "deepseek" || p === "grok" ? p : "deepseek";
 }
 
 // Provedor escolhido, guardado por chat do Telegram.
@@ -150,14 +207,38 @@ function mimeFor(filePath: string): string {
   return mime[ext] ?? "application/octet-stream";
 }
 
-// Envia uma foto que está no DISCO (public/polli) via multipart — o Telegram
+// Envia foto que está no DISCO (public/polli) via multipart — o Telegram
 // não consegue baixar URLs locais, então o arquivo é subido junto.
 export async function sendPhotoFile(chatId: number, filePath: string, caption: string): Promise<void> {
-  const token = getBotToken();
   const buffer = readFileSync(filePath);
+  await sendPhotoBytes(chatId, buffer, mimeFor(filePath), path.basename(filePath), caption);
+}
+
+// Envia o QR do Pix direto do base64 (sem depender de arquivo em disco — no
+// filesystem efêmero da Vercel o PNG gravado em public/ não persiste).
+export async function sendPhotoBase64(chatId: number, base64: string, caption: string): Promise<void> {
+  await sendPhotoBytes(
+    chatId,
+    Buffer.from(base64, "base64"),
+    "image/png",
+    "qrcode.png",
+    caption
+  );
+}
+
+// Núcleo do envio de foto via multipart (bytes brutos, qualquer origem).
+async function sendPhotoBytes(
+  chatId: number,
+  buffer: Buffer,
+  mime: string,
+  filename: string,
+  caption: string
+): Promise<void> {
+  const token = getBotToken();
   const form = new FormData();
   form.append("chat_id", String(chatId));
-  form.append("photo", new Blob([buffer], { type: mimeFor(filePath) }), path.basename(filePath));
+  // Uint8Array é um BlobPart válido; Buffer não (no DOM FormData).
+  form.append("photo", new Blob([new Uint8Array(buffer)], { type: mime }), filename);
   form.append("caption", caption);
   form.append("parse_mode", "Markdown");
 
@@ -225,8 +306,12 @@ async function resolvePhotoTag(
       { enableUnsplash: true, intimacy }
     );
 
-    // Foto do Supabase ou local → URL pública, e a description volta pra a
-    // Polli saber o que está enviando.
+    // Foto do Supabase → URL pública. Foto LOCAL → devolve o filePath (o arquivo
+    // real do disco) usado no sendPhotoFile. A description volta pra a Polli
+    // saber o que está enviando.
+    if (result?.filePath) {
+      return { content, filePath: result.filePath, description: result.description };
+    }
     if (result?.publicUrl) {
       return { content, imageUrl: result.publicUrl, description: result.description };
     }
@@ -242,6 +327,35 @@ async function resolvePhotoTag(
     const detail = error instanceof Error ? error.message : String(error);
     console.error("Falha ao gerar foto (Telegram):", detail);
     return { content };
+  }
+}
+
+// Foto forçada do FUNIL de vendas: ignora curva/intimidade e usa a tag exata
+// (normal -> medium -> hot). Devolve filePath (foto local, multipart) ou URL.
+async function resolveTelegramFunnelPhoto(
+  tag: "normal" | "medium" | "hot_medium" | "hot"
+): Promise<{ imageUrl?: string; filePath?: string; description?: string }> {
+  try {
+    const state = getEmotionalState();
+    const result = await pickResolvedMedia("", state.emotions.safadeza, 1, {
+      enableUnsplash: true,
+      forceTag: tag,
+    });
+    if (result?.filePath) {
+      return { filePath: result.filePath, description: result.description };
+    }
+    if (result?.publicUrl) {
+      return { imageUrl: result.publicUrl, description: result.description };
+    }
+    if (result?.remote) {
+      const url = await generateImage("retrato de mulher", { remote: true });
+      return { imageUrl: url };
+    }
+    return {};
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    console.error("Falha ao gerar foto do funil (Telegram):", detail);
+    return {};
   }
 }
 
@@ -279,9 +393,102 @@ async function processMessage(
   }));
 
   try {
+    const typing = keepTyping(chatId);
+
+    // MODO FUNIL (vendas): o sistema conduz o roteiro — força a foto da etapa
+    // e avança. 100% SCRIPT: fala fixa por etapa, sem chamada de IA.
+    if (funnelEnabled()) {
+      const step = await getFunnelStep(chatKey);
+      const photoTag = funnelPhotoForStep(step);
+      const userName = (await getChatMemory(chatKey)).sobre_o_usuario.nome;
+      const reply = funnelScriptForStep(step, userName);
+
+      const photo = photoTag
+        ? await resolveTelegramFunnelPhoto(photoTag)
+        : { filePath: undefined as string | undefined, imageUrl: undefined as string | undefined, description: undefined as string | undefined };
+
+      let finalContent = reply;
+      if (photo.imageUrl && photoTag && photo.description) {
+        // Foto + legenda padronizada (também sem IA) citando a peça/pose.
+        finalContent = funnelPhotoLine(photoTag, photo.description);
+      }
+
+      // Etapa 4: gera o PIX real (QR + copia-e-cola). O QR preferencialmente
+      // sai direto do base64 (sem disco); só cai no filePath se não houver.
+      let qrBase64: string | undefined;
+      let qrFilePath: string | undefined;
+      let pixBubble: string | undefined;
+      if (step === 4) {
+        const pay = await buildPaymentPayload(chatKey);
+        // A fala da IA e o bloco de pagamento vão separados: a chave Pix tem
+        // pontos e o splitIntoBubbles cortaria no meio.
+        const linhas = (pay.text ?? "").split("\n");
+        const idxCopia = linhas.findIndex((l) => /copia e cola/i.test(l));
+        pixBubble = idxCopia >= 0 ? linhas.slice(idxCopia).join("\n").trim() : pay.text;
+        qrBase64 = pay.qrBase64;
+        qrFilePath = pay.filePath;
+      }
+
+      const bubbles = splitIntoBubbles(finalContent);
+      // Na etapa 4 a foto seguida é vazia; o QR vai na msg de pagamento abaixo.
+      await dbAddMessage(chatKey, "assistant", finalContent, step === 4 ? undefined : photo.imageUrl, bubbles);
+      if (photo.description) await rememberPhotoSent(chatKey, photo.description);
+
+      const [first, ...rest] = bubbles;
+      typing.stop();
+      if (qrBase64 || qrFilePath) {
+        // Foto do QR + caption com a FALA da IA. O QR em base64 é preferido
+        // (funciona no filesystem efêmero); o filePath é o fallback local.
+        if (qrBase64) {
+          await sendPhotoBase64(chatId, qrBase64, photoCaption(first ?? finalContent));
+        } else {
+          await sendPhotoFile(chatId, qrFilePath!, photoCaption(first ?? finalContent));
+        }
+        for (const bubble of rest) {
+          const wait = keepTyping(chatId);
+          await sleep(randomDelayMs());
+          wait.stop();
+          await sendText(chatId, bubble);
+        }
+        // Bloco do PIX em UMA mensagem de texto única (chave inteira).
+        if (pixBubble) {
+          const wait = keepTyping(chatId);
+          await sleep(randomDelayMs());
+          wait.stop();
+          await sendText(chatId, pixBubble);
+          await dbAddMessage(chatKey, "assistant", pixBubble, undefined, [pixBubble]);
+        }
+      } else if (photo.filePath) {
+        await sendPhotoFile(chatId, photo.filePath, photoCaption(first ?? finalContent));
+        for (const bubble of rest) {
+          const wait = keepTyping(chatId);
+          await sleep(randomDelayMs());
+          wait.stop();
+          await sendText(chatId, bubble);
+        }
+      } else if (photo.imageUrl) {
+        await sendPhoto(chatId, photo.imageUrl, photoCaption(first ?? finalContent));
+        for (const bubble of rest) {
+          const wait = keepTyping(chatId);
+          await sleep(randomDelayMs());
+          wait.stop();
+          await sendText(chatId, bubble);
+        }
+      } else {
+        await sendText(chatId, first ?? finalContent);
+        for (const bubble of rest) {
+          const wait = keepTyping(chatId);
+          await sleep(randomDelayMs());
+          wait.stop();
+          await sendText(chatId, bubble);
+        }
+      }
+      await advanceFunnelStep(chatKey, step);
+      return;
+    }
+
     // Mantém o "digitando..." vivo enquanto a IA gera a resposta (o indicador
     // do Telegram morre em ~5s, então reenviamos a cada 4s).
-    const typing = keepTyping(chatId);
     const reply = await generateReply(history, provider, chatKey);
 
     // Recados: se a IA marcou a resposta com a tag [[ENTREGAR: ... | ...]],
@@ -298,22 +505,28 @@ async function processMessage(
     }
 
     const { content, imageUrl, filePath, description } = await resolvePhotoTag(chatId, parsed.content, userMessage);
-    const bubbles = splitIntoBubbles(content);
-    await dbAddMessage(chatKey, "assistant", content, imageUrl, bubbles);
+    // O bot SABE o que está enviando: com a descrição real da foto escolhida,
+    // reescreve a resposta pra falar DESTA foto (não de uma foto qualquer).
+    const finalContent =
+      (imageUrl || filePath) && description
+        ? await refineReplyWithPhoto(content, description, provider)
+        : content;
+    const bubbles = splitIntoBubbles(finalContent);
+    await dbAddMessage(chatKey, "assistant", finalContent, imageUrl, bubbles);
     await bumpMemoryStats(chatKey, 0, 1);
-    if (imageUrl) await rememberPhotoSent(chatKey, description);
-    applyMoodDrift(userMessage, content);
+    if (imageUrl || filePath) await rememberPhotoSent(chatKey, description);
+    applyMoodDrift(userMessage, finalContent);
 
     // Envia os balões. Desligamos o typing ANTES de cada envio, para o
     // "digitando..." sumir no mesmo instante em que a mensagem "chega" —
     // fluxo de chat normal (sem mensagem sumindo nem 3 de uma vez).
     const [first, ...rest] = bubbles;
     typing.stop(); // digitando para antes da 1ª mensagem
-    const caption = first ?? content;
+    const caption = first ?? finalContent;
     if (filePath) {
-      await sendPhotoFile(chatId, filePath, caption);
+      await sendPhotoFile(chatId, filePath, photoCaption(caption, description));
     } else if (imageUrl) {
-      await sendPhoto(chatId, imageUrl, caption);
+      await sendPhoto(chatId, imageUrl, photoCaption(caption, description));
     } else {
       await sendText(chatId, caption);
     }
@@ -415,12 +628,74 @@ export async function handleTelegramUpdate(update: {
     return true;
   }
 
+  // Assinante (pago ou simulado) perguntando se tem conteúdo novo: entrega o que
+// saiu. Sem acesso ativo, cai na resposta normal da IA.
+  if (isNewContentRequest(text)) {
+    const r = await handleNewContentRequest(chatKey);
+    if (!r.ok) {
+      // Não tem acesso ativo — deixa a IA responder naturalmente (funil etc).
+      // Nada a interceptar aqui.
+    } else if (r.temNovidade) {
+      await sendText(chatId, "Trouxe as novidades pra você! 💖 Segue. 😘");
+      return true;
+    } else {
+      await sendText(
+        chatId,
+        "Por enquanto não saiu nada novo, bb. 💕 Mas se eu postar, você vai ser a primeira a saber!"
+      );
+      return true;
+    }
+  }
+
+// Comprovante em modo simulação: se ativo, o bot se comporta como se o
+  // pagamento tivesse sido confirmado e libera TODAS as fotos em massa.
+  if (isPaymentProof(text) && (await isSimulationMode(chatKey))) {
+    const mem = await getChatMemory(chatKey);
+    const nome = (
+      mem.sobre_o_usuario as unknown as { nome?: string }
+    ).nome;
+    const r = await handleSimulatedPayment(chatKey, nome);
+    const info =
+      r.total === 0
+        ? "Hmm, não achei nenhuma foto pra te mandar ainda. 😅"
+        : `Liberei ${r.entregues} pra você! 💖 (simulação de pagamento concluída)`;
+    await sendText(chatId, info);
+    return true;
+  }
+
+  // Comprovante FORA do modo simulação e pagamento real ainda não confirmado:
+  // responde fixo "aguardando confirmação" — nunca simula a entrega.
+  if (isPaymentProof(text)) {
+    const pendente = await pendingPaymentProofReply(chatKey);
+    if (pendente) {
+      await sendText(chatId, pendente);
+      return true;
+    }
+  }
+
   // Comandos básicos.
-  if (text === "/start") {
-    await sendText(
-      chatId,
-      "Oi, amor! 🥰 Tô aqui agora. Pode falar comigo que eu respondo na hora. 😘"
-    );
+  if (text === "/start" || text.startsWith("/start ")) {
+    // Rastreio de origem: o link de divulgação é
+    //   t.me/Pollianne_bot?start=<canal>  →  o bot recebe "/start <canal>".
+    // Guarda a primeira origem (aquisição) e a última visita; isso alimenta o
+    // ranking de canais (qual Kwai/TikTok/canal do Telegram trouxe mais venda).
+    const payload = text.replace("/start", "").trim();
+    if (payload) {
+      const origem = payload.slice(0, 64);
+      const mem = await getChatMemory(chatKey);
+      if (!mem.evidencias.origem) {
+        await setMemoryField(chatKey, "evidencias.origem", origem);
+      }
+      await setMemoryField(chatKey, "evidencias.origem_ultima", origem);
+    }
+
+    // No modo funil o /start JÁ inicia o roteiro: a Polli se apresenta e manda
+    // a amostra leve como primeiro contato (etapa 0).
+    if (funnelEnabled()) {
+      await processMessage(chatId, text, getProvider(chatId));
+      return true;
+    }
+    await sendText(chatId, pickStartMessage());
     return true;
   }
 
@@ -444,6 +719,27 @@ export async function handleTelegramUpdate(update: {
     return true;
   }
 
+  if (text.startsWith("/simulator")) {
+    const arg = text.replace("/simulator", "").trim();
+    if (!arg) {
+      await sendText(
+        chatId,
+        "Pra ativar o modo simulação de pagamento: `/simulator <senha>` 🔐\n\nDepois manda `[foto-comprovante]` que eu libero todo o conteúdo meu pra você (simulado)."
+      );
+      return true;
+    }
+    const r = await enableSimulation(chatKey, arg);
+    if (!r.ok) {
+      await sendText(chatId, r.reason ?? "Não consegui ativar a simulação. 😅");
+      return true;
+    }
+    await sendText(
+      chatId,
+      "Modo simulação ATIVADO! 🔐 Estamos começando do zero por aqui.\n\nConversa comigo normal — quando você quiser saber o que é pagamento, é só mandar `[foto-comprovante]` e eu libero TUDO na hora. 😘"
+    );
+    return true;
+  }
+
   if (text === "/estado") {
     const { getEmotionalState, TEMPERAMENT_INFO } = await import("@/lib/state");
     const s = getEmotionalState();
@@ -458,7 +754,7 @@ export async function handleTelegramUpdate(update: {
   if (text.startsWith("/api")) {
     const arg = text.replace("/api", "").trim().toLowerCase();
 
-    if (arg === "openai" || arg === "deepseek" || arg === "grok") {
+    if (arg === "deepseek" || arg === "grok") {
       providerByChat.set(chatId, arg);
       await sendText(
         chatId,
@@ -471,14 +767,14 @@ export async function handleTelegramUpdate(update: {
       const atual = getProvider(chatId);
       await sendText(
         chatId,
-        `Motor atual: *${atual}*\n\nPra trocar, manda:\n/api openai — natural e moderada\n/api deepseek — sem travas, mais picante\n/api grok — inteligente e picante`
+        `Motor atual: *${atual}*\n\nPra trocar, manda:\n/api deepseek — sem travas, mais picante\n/api grok — inteligente e picante`
       );
       return true;
     }
 
     await sendText(
       chatId,
-      "Motor desconhecido. Válidos: `openai`, `deepseek` ou `grok`. Ex.: `/api deepseek`"
+      "Motor desconhecido. Válidos: `deepseek` ou `grok`. Ex.: `/api deepseek`"
     );
     return true;
   }

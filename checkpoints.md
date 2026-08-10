@@ -1,5 +1,116 @@
 # Checkpoints
 
+## Sessão 54 — OpenAI removida; funil 100% scriptado (sem IA)
+
+- Estado: BUILD OK (prisma generate + next build).
+- Funil scriptado: `funnelScriptForStep` em `funnel.ts` (falas fixas por etapa, sem chamada de LLM). Web e Telegram usam o script no lugar de `generateReply`.
+- OpenAI removida: ai.ts (callOpenAI/tryOpenAI/fallbacks), Chat.tsx, telegram.ts (`/api`), chat/route.ts (default deepseek), memory.ts (provedor default), `.env` (chave removida).
+- Validação: build OK; pendente validar runtime do funil (falas + QR + PIX) no web e Telegram.
+
+## Sessão 53 — Kit de divulgação low-cost (rastreio, retenção, age-gate, landing)
+
+- Estado: BUILD OK (prisma generate + next build). Rotas novas: `/start`, `/api/retencao`, `/api/metricas`.
+- Rastreio: `/start <canal>` grava `evidencias.origem` (1ª) + `origem_ultima`; link `t.me/Pollianne_bot?start=kwai` → o bot recebe `/start kwai`.
+- Retenção: `GET /api/retencao?key=...` reativa etapa-4-parada (24h+) e vencidos (7d). Idempotente via flags.
+- Métricas: `GET /api/metricas?key=...` agrega por origem (total/etapa4/pagos/conversão).
+- Age-gate 18+ na raiz (`AgeGate.tsx`, localStorage `age_ok_18`).
+- Landing `/start?src=<canal>` com CTA pro bot + aviso 18+.
+- `.env` +`TELEGRAM_BOT_USERNAME` + `RETENCAO_KEY`.
+- Pendências: agendar cron do `/api/retencao` (cron-job.org ou Vercel Cron); usar links rastreados nas bios/seeding; validar `/start?src=` no navegador e `/start kwai` no Telegram.
+
+## Sessão 52 — Funil não simula entrega sem pagamento aprovado
+
+- Estado: BUILD OK; commit `ad87899` na main (push feito).
+- Causa: `advanceFunnelStep` avançava da etapa 4 (pagamento) direto pra 5 (assinante) a cada mensagem. A IA da etapa 5 é instruída a "tratar como assinante e mostrar conteúdo" → sem ter pago, ela "simulava" o envio das fotos.
+- Fix 1: `advanceFunnelStep` agora trava em `FUNNEL_PAYMENT_STEP=4`; o salto 4→5 só ocorre via `markAsPaid` (webhook Asaas ou simulador).
+- Fix 2: instrução da etapa 4 reforçada — se a pessoa disser que pagou/mandar comprovante, responder que aguardando confirmação; nunca prometer envio nem tag de foto.
+- Fix 3: `pendingPaymentProofReply` (simulate.ts) — comprovante FORA do modo simulação e sem acesso ativo responde fixo "aguardando confirmação" (sem passar pela IA). Integrado no web e Telegram.
+- Teste: etapa 3→4 ✓; msg nova na 4 mantém 4 ✓; comprovante pendente interceptado ✓; markAsPaid → 5 ✓; pago não intercepta ✓.
+- Pendências: validar runtime no web/TG.
+
+## Sessão 51 — QR do PIX via data URL + fala padronizada das fotos picantes
+
+- Estado: BUILD OK; commit `60797f1` na main (push feito).
+- **QR do PIX não renderizava**: o PNG era gravado em `public/pix/` (filesystem efêmero/read-only na Vercel) e o web recebia `/pix/<id>.png` → 404.
+  - Fix: `buildPaymentPayload` persiste `evidencias.pix_qr_base64` e devolve `qrBase64`; web usa `data:image/png;base64,...` diretamente no `<img>`. Telegram usa novo `sendPhotoBase64` (bytes direto, sem disco).
+  - A chave copia-e-cola **sempre aparece** como balão de texto (fallback quando o QR falhar) — requisito do usuário.
+  - Validação: `qrBase64` PNG válido (magic `89504e47`, 488×488), reuso da cobrança → mesmo paymentId/base64 ✓.
+  - `.gitignore` adicionado: `/public/pix/` (QRs são runtime).
+- **Fala das fotos picantes (funil)**: a moderação das IAs travava/fugia de falar sobre foto hot → mensagem genérica.
+  - Fix: `funnelPhotoLine(tag, description)` em `funnel.ts` — templates fixos por nível + detalhe visual extraído da descrição (peça → "olha pra minha X…", pose → "olha eu Y…"). SEM IA em fotos forçadas do funil.
+  - Usado em `chat/route.ts` e `telegram.ts` quando há `photoTag && photo.description`.
+  - Testes das 7 descrições reais (normal/hot_medium/hot) ✓.
+- Pendências: validar p.a. a p.a. no web (QR + chave) e Telegram; webhook Asaas + envs na Vercel.
+
+## Sessão 50 — Conteúdo novo sob demanda + acesso de 1 semana + chave PIX inteira
+
+- Estado: BUILD OK; commit `3573ea7` na main (push feito).
+- `deliver.ts`: **`deliverNewContent`** entrega só o que saiu desde `ultima_media_entregue_id` (rastreado por chat); mensagens `NEW_OPENING`/`CLOSING` ("por enquanto é só isso... se tiver novo, é só me pedir").
+- Funnl de negócio: `markAsPaid` agora grava `evidencias.conteudo_liberado_ate` (`ACCESS_DURATION_MS = 7 dias`); `hasActiveAccess` = ainda dentro da 1 semana.
+- `simulate.ts`: `handleNewContentRequest` — responde/entrega novidade só p/ quem tem acesso ativo OU modo simulação.
+- Web (`chat/route.ts`) + Telegram (`telegram.ts`): detectam pedido "tem conteúdo novo?"/novidades → entregam ou avisam "nada novo ainda".
+- Bug chave PIX: removidos backticks e enviado em BALÃO ÚNICO (linha do copia-e-cola completa); `Chat.tsx` quebra linhas longas (`[overflow-wrap:anywhere]`) pra chave ~200 chars não estourar o balão.
+- Valor default R$ 10 (`ASAAS_PIX_VALUE=10` no `.env`).
+- Testes: simulador 21/21 ✓; pedido novidade sem mídia nova → 0 entregues ✓; rebaixado marcador → 21 "novas" entregues ✓.
+- Pendências: cadastrar webhook no Asaas; `ASAAS_*` + `SIMULATION_CODE` no painel Vercel; validar chave PIX de ponta a ponta no web.
+
+## Sessão 49 — Pagamento PIX Asaas + liberação em massa + simulador
+
+- Estado: BUILD OK.
+- Pagamento PIX: `src/lib/asaas.ts` (customer/CNPJ/cobrança/QR/copia-e-cola), webhook `/api/asaas/webhook` (validação dupla + `markAsPaid`), etapa 4 do funil gera QR real.
+- Liberação em massa: `src/lib/deliver.ts deliverAllContent` — todas as fotos (Supabase 1º, local fallback) enviadas ao confirmar pagamento; idempotente (`conteudo_entregue`); `waitUntil` no webhook pra não morrer no freeze da Vercel. `Chat.tsx` com polling 8s.
+- SIMULADOR (novo): `/simulator <senha>` ativa modo simulação (`SIMULATION_CODE`, default `teste123` no .env) e reinicia o funil na etapa 0. Com o modo ativo, mandar `[foto-comprovante]` libera TODAS as fotos como pagamento real (`handleSimulatedPayment` → `markAsPaid` + `deliverAllContent`).
+- Teste simulado: senha errada → recusa ✓; ativa → funil etapa 0 ✓; `[foto-comprovante]` → **21/21 fotos liberadas** ✓; modo desativado após entrega ✓.
+- Nota: não há integração WhatsApp no projeto (só web + Telegram).
+- Pendências: cadastrar webhook no Asaas (`/api/asaas/webhook`, PAYMENT_CONFIRMED/RECEIVED); validar simulação no web/TG; variáveis `ASAAS_*` + `SIMULATION_CODE` no painel Vercel.
+
+## Sessão 48 — Modo FUNIL de vendas (bot simplificado, sem memória)
+
+- Estado: BUILD OK. `FUNNEL_MODE=1` ativo no .env.
+- Roteiro por etapa (sistema força a foto, IA só conversa):
+  0 apresentação + foto normal → 1 ajuda (sem foto) → 2 foto hot_medium → 3 foto hot → 4 dados de pagamento → 5 assinante.
+- Arquivos: `src/lib/funnel.ts` (novo), `ai.ts` (prompt simplificado + aprendizado off), `photoSource.ts` (forceTag), `chat/route.ts` + `telegram.ts` (caminho funil).
+- Dados de pagamento: env `PAYMENT_INFO` (padrão mostra Pix).
+- Teste: etapa 0 responde apresentando e anunciando foto ✓. ~30s por resposta na NVIDIA.
+- Pendências: validar fluxo completo (5 etapas) no web/TG; commit/push das Sessões 44–48.
+
+## Sessão 47 — Persona adulta (21 anos) + escalada de explicitude por intimidade
+
+- Estado: BUILD OK.
+- Idade 17 → 21 em todos os arquivos (personalidade.md, ai.ts, memory.ts, telegram.ts START, wake.ts).
+- `ai.ts`: ESCALA DE OUSADIA PELA INTIMIDADE (nível 0.75+ = totalmente explícita e provocante), PROVOCAÇÃO HOT SEM CULPA, VERGONHA CONDICIONADA AO NÍVEL (vergona só em nível baixo/médio).
+- `.env` DEFAULT_PROVIDER: `openai` → `deepseek` (menos travado); `chat/route.ts` web passou a respeitar DEFAULT_PROVIDER.
+- Gate de fotos já amarrado ao nível (0.2 medium / 0.4 hot_medium / 0.6 hot).
+- Teste: nível 0.92 + conversa quente → OpenAI deu "[[FOTO: picante]]", DeepSeek deu picante/flerte quente. Variabilidade de tom existe (guardrails das APIs de terceiros).
+- Pendências: validar runtime no web/TG em nível alto; commit/push das Sessões 44–47.
+
+## Sessão 46 — Fala natural com a foto (fim da description crua no caption)
+
+- Estado: BUILD OK.
+- Queixa: caption trazia `_(descrição literal)_`; usuário quer fala natural citando a peça (ex.: "o que achou da minha blusinha preta?").
+- Fix:
+  - `telegram.ts` `photoCaption`: só devolve o texto da resposta (limitada ao teto do Telegram). Descrição NÃO é mais anexada.
+  - `ai.ts` `producePhotoAwareReply`: prompt reforçado — nunca colar a descrição; incorporar 1-2 detalhes visuais numa fala natural e provocante, sem parecer relato.
+- Teste real (openai): blusinha preta → "olha a minha blusinha preta... 😳 O que você achou?" ✓; blusinha branca desabotoada → "essa blusinha branca, o que achou?" ✓.
+- Pendências: validar runtime no Telegram (as duas fotos) e confirmar commit/push das Sessões 44+45+46.
+
+## Sessão 45 — Bot "sabe" a descrição da foto enviada (web + Telegram)
+
+- Estado: BUILD OK.
+- Causa: foto escolhida depois da resposta; `description` só valia no próximo prompt → o bot falava genérico e não da foto real.
+- Fix: `ai.ts` → `refineReplyWithPhoto` reescreve a resposta com a descrição REAL; `chat/route.ts` e `telegram.ts` chamam após resolver a foto; `photoCaption` no Telegram anexa `_(description)_`.
+- Teste: resposta bateu com a descrição ✓; moderação pode recusar em caso +18 → fallback mantém original.
+- Pendência: validar runtime (web e Telegram).
+
+## Sessão 44 — Fix: fotos não saíam (gate de intimidade intransponível)
+
+- Estado: BUILD OK.
+- Causa (via diag local): IA gerava `[[FOTO: ...]]`, extração funcionava, mas `pickResolvedMedia` bloqueava com `0.1% < min 15%` — chats reais têm nivel ≈ 0.1, então NENHUMA foto saía.
+- Fix `photoSource.ts`: `INTIMACY_PHOTO_MIN` 0.15 → **0.05** (0% ainda bloqueia); picantes afrouxadas 0.3/0.55/0.75 → 0.2/0.4/0.6 (amarradas ao nível).
+- Fix fallback: foto local devolve `filePath` + `publicUrl`; `telegram.ts` prioriza `sendPhotoFile` (multipart), sem URL relativa inválida.
+- Teste IA: nivel 0.1 → resolveu e devolveu URL Supabase ✓.
+- Pendência: validar runtime (web e Telegram).
+
 ## Sessão 43 — Recados entre pessoas + lealdade de fotos (feature completa)
 
 - Estado: BUILD OK (`prisma generate && next build`).

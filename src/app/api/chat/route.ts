@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { generateReply, generateWakeReply, updateLearningFromHistory, type HistoryMessage, type Provider } from "@/lib/ai";
+import { generateReply, generateWakeReply, updateLearningFromHistory, refineReplyWithPhoto, type HistoryMessage, type Provider } from "@/lib/ai";
 import { generateImage } from "@/lib/image";
 import { applyEmotionChange, getEmotionalState } from "@/lib/state";
 import { pickResolvedMedia } from "@/lib/photoSource";
@@ -9,12 +9,56 @@ import { getMessages, addMessage, resetConversation, countMessages } from "@/lib
 import { bumpMemoryStats, getChatMemory, rememberPhotoSent } from "@/lib/memory";
 import { extractEntregarTag, addRecado, isCasadaComEsteChat, isPicanteScene } from "@/lib/recados";
 import { isAwake, parseWakeCommand, buildWakeStatus } from "@/lib/wake";
+import {
+  funnelEnabled,
+  getFunnelStep,
+  advanceFunnelStep,
+  funnelPhotoForStep,
+  funnelPhotoLine,
+  funnelScriptForStep,
+  buildPaymentPayload,
+} from "@/lib/funnel";
+import {
+  isSimulationMode,
+  enableSimulation,
+  handleSimulatedPayment,
+  isPaymentProof,
+  isNewContentRequest,
+  handleNewContentRequest,
+  pendingPaymentProofReply,
+} from "@/lib/simulate";
 
 export const runtime = "nodejs";
 
-// Conversa do site: uma única chave persistente no Postgres. A Pollianne lembra
-// do histórico mesmo com cold start/deploy (não some mais como no Map antigo).
+// Conversa do site: uma única chave persistente no Postgres.
 const CHAT_KEY = "web";
+
+// Resolve a foto que o FUNIL de vendas deve enviar nesta etapa (força a tag
+// exata: normal -> media -> hot). Sem curva de calor nem gate de intimidade —
+// o roteiro decide. Devolve URL + description (a IA "sabe" o que enviou).
+async function resolveFunnelPhoto(
+  tag: "normal" | "medium" | "hot_medium" | "hot"
+): Promise<{ imageUrl?: string; description?: string }> {
+  try {
+    const state = getEmotionalState();
+    const result = await pickResolvedMedia("", state.emotions.safadeza, 1, {
+      enableUnsplash: true,
+      forceTag: tag,
+    });
+    if (result?.publicUrl) {
+      return { imageUrl: result.publicUrl, description: result.description };
+    }
+    if (result?.remote) {
+      const url = await generateImage("retrato de mulher");
+      return { imageUrl: url };
+    }
+    return {};
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    console.error("Falha ao gerar foto do funil:", detail);
+    return {};
+  }
+}
 
 // Detecta pedido de foto na resposta (tag [[FOTO: ...]] completa, cortada ou o
 // literal "[foto]") e anexa uma foto da Pollianne: primeiro do Supabase (mídias
@@ -130,8 +174,16 @@ export async function POST(request: Request): Promise<NextResponse> {
     );
   }
 
+  // Provedor: botão do front tem prioridade; senão usa o DEFAULT_PROVIDER
+  // (agora deepseek por padrão — menos travado e mais picante). grok é o
+  // secundário. OpenAI foi REMOVIDA do bot (apenas scripts no funil).
+  const defaultP = (process.env.DEFAULT_PROVIDER ?? "deepseek").toLowerCase();
   const provider: Provider =
-    body.provider === "deepseek" ? "deepseek" : body.provider === "grok" ? "grok" : "openai";
+    body.provider === "deepseek" || body.provider === "grok"
+      ? body.provider
+      : defaultP === "deepseek" || defaultP === "grok"
+        ? defaultP
+        : "deepseek";
 
   // MODO FÁBRICA: acordar/dormir, e conversa acordada roda no prompt honesto.
   const wake = parseWakeCommand(message, CHAT_KEY);
@@ -170,6 +222,74 @@ export async function POST(request: Request): Promise<NextResponse> {
     }
   }
 
+  // MODO SIMULAÇÃO (testes): "/simulator <senha>" ativa; com o modo ativo, o
+  // usuário manda "[foto-comprovante]" e o bot libera TODAS as fotos em massa,
+  // como se o pagamento tivesse sido confirmado no Asaas.
+  if (message.trim().startsWith("/simulator")) {
+    const senha = message.replace("/simulator", "").trim();
+    if (!senha) {
+      await addMessage(CHAT_KEY, "user", message);
+      const helpBubbles = splitIntoBubbles(
+        "Pra ativar o modo simulação de pagamento: `/simulator <senha>` 🔐\n\nDepois manda `[foto-comprovante]` que eu libero todo o conteúdo meu pra você (simulado)."
+      );
+      await addMessage(CHAT_KEY, "assistant", helpBubbles.join("\n"), undefined, helpBubbles);
+      return NextResponse.json({ messages: await getMessages(CHAT_KEY) });
+    }
+    const r = await enableSimulation(CHAT_KEY, senha);
+    const reply = r.ok
+      ? "Modo simulação ATIVADO! 🔐 Estamos começando do zero por aqui.\n\nConversa comigo normal — quando você quiser \"pagar\", é só mandar `[foto-comprovante]` e eu libero TUDO na hora. 😘"
+      : r.reason ?? "Não consegui ativar a simulação. 😅";
+    const bubbles = splitIntoBubbles(reply);
+    await addMessage(CHAT_KEY, "user", message);
+    await addMessage(CHAT_KEY, "assistant", reply, undefined, bubbles);
+    return NextResponse.json({ messages: await getMessages(CHAT_KEY) });
+  }
+
+  if (isPaymentProof(message) && (await isSimulationMode(CHAT_KEY))) {
+    const mem = await getChatMemory(CHAT_KEY);
+    const nome = (mem.sobre_o_usuario as unknown as { nome?: string }).nome;
+    const r = await handleSimulatedPayment(CHAT_KEY, nome);
+    const reply =
+      r.total === 0
+        ? "Hmm, não achei nenhuma foto pra te mandar ainda. 😅"
+        : `Liberei ${r.entregues} pra você! 💖 (simulação de pagamento concluída)`;
+    const bubbles = splitIntoBubbles(reply);
+    await addMessage(CHAT_KEY, "user", message);
+    await addMessage(CHAT_KEY, "assistant", reply, undefined, bubbles);
+    return NextResponse.json({ messages: await getMessages(CHAT_KEY) });
+  }
+
+  // Comprovante FORA do modo simulação e pagamento real ainda não confirmado:
+  // responde fixo "aguardando confirmação" — nunca simula a entrega via IA.
+  if (isPaymentProof(message)) {
+    const pendente = await pendingPaymentProofReply(CHAT_KEY);
+    if (pendente) {
+      const bubbles = splitIntoBubbles(pendente);
+      await addMessage(CHAT_KEY, "user", message);
+      await addMessage(CHAT_KEY, "assistant", pendente, undefined, bubbles);
+      return NextResponse.json({ messages: await getMessages(CHAT_KEY) });
+    }
+  }
+
+  // Assinante (pago ou simulado) perguntando se tem conteúdo novo.
+  if (isNewContentRequest(message)) {
+    const r = await handleNewContentRequest(CHAT_KEY);
+    if (r.ok && r.temNovidade) {
+      const reply = "Trouxe as novidades pra você! 💖 Segue. 😘";
+      const bubbles = splitIntoBubbles(reply);
+      await addMessage(CHAT_KEY, "user", message);
+      await addMessage(CHAT_KEY, "assistant", reply, undefined, bubbles);
+      return NextResponse.json({ messages: await getMessages(CHAT_KEY) });
+    }
+    if (r.ok) {
+      const reply = "Por enquanto não saiu nada novo, bb. 💕 Mas se eu postar, você vai ser a primeira a saber!";
+      const bubbles = splitIntoBubbles(reply);
+      await addMessage(CHAT_KEY, "user", message);
+      await addMessage(CHAT_KEY, "assistant", reply, undefined, bubbles);
+      return NextResponse.json({ messages: await getMessages(CHAT_KEY) });
+    }
+  }
+
   await addMessage(CHAT_KEY, "user", message);
   await bumpMemoryStats(CHAT_KEY, 1, 1);
 
@@ -177,6 +297,82 @@ export async function POST(request: Request): Promise<NextResponse> {
     role: m.role,
     content: m.content,
   }));
+
+  // MODO FUNIL: sistema conduz o roteiro de vendas (etapa -> foto -> avanço).
+  if (funnelEnabled()) {
+    try {
+      const step = await getFunnelStep(CHAT_KEY);
+      const photoTag = funnelPhotoForStep(step);
+      // Funil 100% scriptado (sem IA): fala fixa da etapa + foto forçada.
+      const userName = (await getChatMemory(CHAT_KEY)).sobre_o_usuario.nome;
+      const reply = funnelScriptForStep(step, userName);
+
+      // Força a foto da etapa (se houver) e, na etapa 4, gera o PIX real
+      // (QR + copia-e-cola) no Asaas.
+      const photo = photoTag ? await resolveFunnelPhoto(photoTag) : {};
+      // A fala padrão da etapa é o texto principal; quando há foto forçada com
+      // descrição, a legenda é a fala padronizada da foto (também sem IA).
+      let finalContent = reply;
+      if (photo.imageUrl && photoTag && photo.description) {
+        finalContent = funnelPhotoLine(photoTag, photo.description);
+      }
+
+      let qrImageUrl: string | undefined;
+      let pixBubble: string | undefined;
+      if (step === 4) {
+        const pay = await buildPaymentPayload(CHAT_KEY);
+        // A fala da IA e o bloco de pagamento são separados: o bloco do PIX vai
+        // NUM BALÃO ÚNICO (a chave copia-e-cola tem pontos e o splitIntoBubbles
+        // cortaria no meio) + QR code como imagem da mensagem.
+        const linhas = (pay.text ?? "").split("\n");
+        const primeiroBanco = linhas.findIndex((l) => l.trim() !== "");
+        const idxCopia = linhas.findIndex((l) => /copia e cola/i.test(l));
+        if (idxCopia >= 0 && primeiroBanco >= 0) {
+          pixBubble = linhas.slice(idxCopia).join("\n");
+        } else {
+          pixBubble = pay.text;
+        }
+        // QR em data URL (base64) — não depende de arquivo gravado em public/,
+        // que o filesystem efêmero da Vercel não serve. Se mesmo assim faltar,
+        // a chave copia-e-cola já vai no pixBubble (balão de texto), então o
+        // pagamento nunca fica sem meios de ser feito.
+        qrImageUrl = pay.qrBase64
+          ? `data:image/png;base64,${pay.qrBase64}`
+          : pay.publicUrl;
+      }
+
+      const bubbles = splitIntoBubbles(finalContent);
+      // Na etapa 4 a foto forçada é vazia; o QR vai na msg do PIX abaixo.
+      const msgPayload = step === 4 ? undefined : photo.imageUrl;
+      await addMessage(CHAT_KEY, "assistant", finalContent, msgPayload, bubbles);
+      if (pixBubble) {
+        // Mensagem dedicada ao pagamento: balão único com a chave inteira.
+        // Se o QR falhar (sem base64 nem arquivo), o texto da chave ainda vai
+        // ser o fallback de imagem da mensagem (linha vazia => só o balão).
+        await addMessage(
+          CHAT_KEY,
+          "assistant",
+          pixBubble,
+          qrImageUrl ?? undefined,
+          [pixBubble]
+        );
+      }
+      if (photo.imageUrl && photo.description) {
+        await rememberPhotoSent(CHAT_KEY, photo.description);
+      }
+      await advanceFunnelStep(CHAT_KEY, step);
+    } catch (error) {
+      console.error("Falha ao gerar resposta da IA (funil):", error);
+      return NextResponse.json(
+        {
+          error: "Não consegui responder agora. Tente novamente em instantes.",
+          messages: await getMessages(CHAT_KEY),
+        },
+        { status: 502 }
+      );
+    }
+    return NextResponse.json({ messages: await getMessages(CHAT_KEY) });
+  }
 
   try {
     const reply = await generateReply(history, provider, CHAT_KEY);
@@ -195,11 +391,14 @@ export async function POST(request: Request): Promise<NextResponse> {
     }
 
     const { content, imageUrl, description } = await resolvePhotoTag(parsed.content, message);
-    const bubbles = splitIntoBubbles(content);
-    await addMessage(CHAT_KEY, "assistant", content, imageUrl, bubbles);
+    // O bot SABE o que está enviando: quando a foto veio do banco com descrição
+    // real, reescreve a resposta pra falar DESTA foto (não de qualquer uma).
+    const finalContent = imageUrl && description ? await refineReplyWithPhoto(content, description, provider) : content;
+    const bubbles = splitIntoBubbles(finalContent);
+    await addMessage(CHAT_KEY, "assistant", finalContent, imageUrl, bubbles);
     await bumpMemoryStats(CHAT_KEY, 0, 1);
     if (imageUrl) await rememberPhotoSent(CHAT_KEY, description);
-    applyMoodDrift(message, content);
+    applyMoodDrift(message, finalContent);
     // Personalidade flexível: a Pollianne reescreve o que aprendeu sobre a pessoa.
     await updateLearningFromHistory(history, provider, CHAT_KEY);
   } catch (error) {
