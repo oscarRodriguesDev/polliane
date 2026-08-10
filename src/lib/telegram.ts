@@ -24,6 +24,7 @@ import {
   advanceFunnelStep,
   funnelPhotoForStep,
   funnelPhotoLine,
+  funnelScriptForStep,
   buildPaymentPayload,
 } from "@/lib/funnel";
 import {
@@ -93,10 +94,10 @@ export function getBotToken(): string {
   return process.env.TELEGRAM_BOT_TOKEN ?? "";
 }
 
-// Provedor padrão definido no ambiente (DEFAULT_PROVIDER) ou "openai".
+// Provedor padrão definido no ambiente (DEFAULT_PROVIDER) ou "deepseek".
 function defaultProvider(): Provider {
-  const p = (process.env.DEFAULT_PROVIDER ?? "openai").toLowerCase();
-  return p === "deepseek" || p === "grok" ? p : "openai";
+  const p = (process.env.DEFAULT_PROVIDER ?? "deepseek").toLowerCase();
+  return p === "deepseek" || p === "grok" ? p : "deepseek";
 }
 
 // Provedor escolhido, guardado por chat do Telegram.
@@ -395,11 +396,12 @@ async function processMessage(
     const typing = keepTyping(chatId);
 
     // MODO FUNIL (vendas): o sistema conduz o roteiro — força a foto da etapa
-    // e avança. A IA só dá naturalidade (prompt simplificado no ai.ts).
+    // e avança. 100% SCRIPT: fala fixa por etapa, sem chamada de IA.
     if (funnelEnabled()) {
       const step = await getFunnelStep(chatKey);
       const photoTag = funnelPhotoForStep(step);
-      const reply = await generateReply(history, provider, chatKey);
+      const userName = (await getChatMemory(chatKey)).sobre_o_usuario.nome;
+      const reply = funnelScriptForStep(step, userName);
 
       const photo = photoTag
         ? await resolveTelegramFunnelPhoto(photoTag)
@@ -407,11 +409,8 @@ async function processMessage(
 
       let finalContent = reply;
       if (photo.imageUrl && photoTag && photo.description) {
-        // Foto picante + moderação = a IA foge de falar da foto. Fala
-        // padronizada (sem IA) citando a peça/pose da descrição real.
+        // Foto + legenda padronizada (também sem IA) citando a peça/pose.
         finalContent = funnelPhotoLine(photoTag, photo.description);
-      } else if (photo.description) {
-        finalContent = await refineReplyWithPhoto(reply, photo.description, provider);
       }
 
       // Etapa 4: gera o PIX real (QR + copia-e-cola). O QR preferencialmente
@@ -755,7 +754,7 @@ export async function handleTelegramUpdate(update: {
   if (text.startsWith("/api")) {
     const arg = text.replace("/api", "").trim().toLowerCase();
 
-    if (arg === "openai" || arg === "deepseek" || arg === "grok") {
+    if (arg === "deepseek" || arg === "grok") {
       providerByChat.set(chatId, arg);
       await sendText(
         chatId,
@@ -768,14 +767,14 @@ export async function handleTelegramUpdate(update: {
       const atual = getProvider(chatId);
       await sendText(
         chatId,
-        `Motor atual: *${atual}*\n\nPra trocar, manda:\n/api openai — natural e moderada\n/api deepseek — sem travas, mais picante\n/api grok — inteligente e picante`
+        `Motor atual: *${atual}*\n\nPra trocar, manda:\n/api deepseek — sem travas, mais picante\n/api grok — inteligente e picante`
       );
       return true;
     }
 
     await sendText(
       chatId,
-      "Motor desconhecido. Válidos: `openai`, `deepseek` ou `grok`. Ex.: `/api deepseek`"
+      "Motor desconhecido. Válidos: `deepseek` ou `grok`. Ex.: `/api deepseek`"
     );
     return true;
   }

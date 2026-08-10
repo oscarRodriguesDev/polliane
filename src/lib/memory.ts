@@ -128,7 +128,7 @@ export function emptyMemory(): ChatMemory {
       nivel: 0,
     },
     estado_emocional: {},
-    preferencias_conversa: { provedor_atual: "openai" },
+    preferencias_conversa: { provedor_atual: "deepseek" },
     aprendizados_genericos: {},
     evidencias: {
       total_mensagens: 0,

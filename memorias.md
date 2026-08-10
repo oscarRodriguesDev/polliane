@@ -1,5 +1,19 @@
 # Memórias (VIBECODE)
 
+## Sessão 54 — OpenAI removida do bot; funil 100% scriptado (sem IA)
+
+- Pedido: "retire o uso da open ia do meu bot, vamos usar apenas script automatizados".
+- **Funil 100% scriptado** (`src/lib/funnel.ts`): novo `funnelScriptForStep(step, userName)` — falas FIXAS por etapa (0 apresentação+foto, 1 ajuda, 2 foto hot_medium, 3 foto hot, 4 pagamento, 5 assinante), 2 variações sorteadas por etapa. O funil NÃO chama mais nenhum modelo de linguagem: texto + foto + PIX todo conduzido pelo sistema.
+- **Removida a OpenAI** de todo o bot:
+  - `ai.ts`: removidos `OPENAI_URL`, `OPENAI_MODEL`, `callOpenAI`, `tryOpenAI` e todos os fallbacks pra openai em `generateReply`, `produceLearning`, `producePhotoAwareReply`, `generateWakeReply`. `Provider = "deepseek" | "grok"`, default `deepseek`.
+  - `chat/route.ts` e `telegram.ts`: no funil, `generateReply` → `funnelScriptForStep`; `refineReplyWithPhoto` não é mais chamado no funil. Default provider → deepseek.
+  - `Chat.tsx`: ciclo de provider sem openai (deepseek ↔ grok).
+  - `telegram.ts`: comando `/api` aceita só deepseek/grok.
+  - `memory.ts`: `provedor_atual` default openai → deepseek.
+  - `.env`: chave `OPENIAI_API_KEY` removida (não versionado).
+- Build OK (prisma generate + next build). Rotas intactas.
+- Pendência: validar fluxo do funil no web/TG (falas script + QR + chave PIX), e o webhook Asaas continua como antes (o token `ASAAS_WEBHOOK_KEY` segue valendo).
+
 ## Sessão 53 — Kit de divulgação: rastreio de origem + retenção + age-gate (full divulgável)
 
 - Pedido: divulgar o bot com o menor custo possível (Kwai/TikTok/IG/FB). Estratégia do agente de marketing: orgânico ≠0 no TikTok/Kwai, seeding em canais do Telegram (R$ 30–60), CAC ≤ R$ 5, retenção como alavanca de R$ 0. META ads/FB/Google/TikTok Ads = proibidos pro nicho.

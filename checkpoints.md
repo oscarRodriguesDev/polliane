@@ -1,5 +1,12 @@
 # Checkpoints
 
+## Sessão 54 — OpenAI removida; funil 100% scriptado (sem IA)
+
+- Estado: BUILD OK (prisma generate + next build).
+- Funil scriptado: `funnelScriptForStep` em `funnel.ts` (falas fixas por etapa, sem chamada de LLM). Web e Telegram usam o script no lugar de `generateReply`.
+- OpenAI removida: ai.ts (callOpenAI/tryOpenAI/fallbacks), Chat.tsx, telegram.ts (`/api`), chat/route.ts (default deepseek), memory.ts (provedor default), `.env` (chave removida).
+- Validação: build OK; pendente validar runtime do funil (falas + QR + PIX) no web e Telegram.
+
 ## Sessão 53 — Kit de divulgação low-cost (rastreio, retenção, age-gate, landing)
 
 - Estado: BUILD OK (prisma generate + next build). Rotas novas: `/start`, `/api/retencao`, `/api/metricas`.

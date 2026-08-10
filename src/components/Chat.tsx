@@ -17,7 +17,7 @@ type ChatResponse = {
   error?: string;
 };
 
-type Provider = "openai" | "deepseek" | "grok";
+type Provider = "deepseek" | "grok";
 
 const SUGGESTIONS = [
   "Ei, conta uma coisa engraçada do teu dia",
@@ -43,8 +43,8 @@ export default function Chat() {
   const [revealing, setRevealing] = useState(false);
   // Inicia sempre dark (igual ao SSR) e corrige após o mount para evitar hydration mismatch.
   const [dark, setDark] = useState<boolean>(true);
-  // Provedor de IA: "openai" (gpt-4o-mini, mais moderado) ou "deepseek" (sem travas, mais picante).
-  const [provider, setProvider] = useState<Provider>("openai");
+  // Provedor de IA: "deepseek" (sem travas, mais picante) ou "grok".
+  const [provider, setProvider] = useState<Provider>("deepseek");
   const endRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
   // Último id de mensagem do bot que já foi revelado (evita animar no load inicial).
@@ -72,7 +72,7 @@ export default function Chat() {
   // Lê o provedor salvo no mount.
   useEffect(() => {
     const saved = localStorage.getItem("provider");
-    if (saved === "deepseek" || saved === "openai" || saved === "grok") {
+    if (saved === "deepseek" || saved === "grok") {
       setProvider(saved);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -204,19 +204,15 @@ export default function Chat() {
   }
 
   function cycleProvider() {
-    setProvider((prev) =>
-      prev === "openai" ? "deepseek" : prev === "deepseek" ? "grok" : "openai"
-    );
+    setProvider((prev) => (prev === "deepseek" ? "grok" : "deepseek"));
   }
 
   const providerLabel: Record<Provider, string> = {
-    openai: "OpenAI",
     deepseek: "DeepSeek",
     grok: "Grok",
   };
 
   const providerInfo: Record<Provider, string> = {
-    openai: "OpenAI: respostas naturais e moderadas.",
     deepseek: "DeepSeek: sem travas, mais picante.",
     grok: "Grok (OpenRouter): inteligente e picante.",
   };

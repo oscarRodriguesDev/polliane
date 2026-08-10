@@ -172,6 +172,61 @@ export function funnelPhotoLine(tag: string, description?: string): string {
   return prefixo ? `${prefixo}${linha}` : linha;
 }
 
+/**
+ * Falas FIXAS do funil por etapa — 100% SCRIPT, sem IA.
+ *
+ * O funil não chama mais nenhum modelo de linguagem: o SISTEMA conduz o
+ * roteiro inteiro (texto + foto + pagamento). Cada etapa tem variações e a
+ * fala é sorteada pra não parecer mensagem decorada.
+ */
+const FUNNEL_SCRIPTS: Record<number, ((nome?: string) => string)[]> = {
+  0: [
+    () =>
+      "Oi! Eu sou a Pollianne 😊 fotógrafa e modelo nas horas vagas… deixa eu te mostrar uma foto minha pra tu ver o que eu faço 💕",
+    () =>
+      "Oie! Prazer, sou a Pollianne! Tô vendendo umas fotos minhas pra ajudar a pagar a minha faculdade de psicologia… quer ver uma amostra? 😊",
+  ],
+  1: [
+    () =>
+      "Olha, eu entendo que nem todo mundo pode ajudar, e tá tudo bem! Mas se você curtir o que eu mando, qualquer contribuiçãozinha já me ajuda demais com a faculdade 🥰",
+    () =>
+      "É só uma ajudinha, amor. Você não precisa comprar nada na força, mas se gostar do que eu postei, qualquer valor me ajuda muito 💖",
+  ],
+  2: [
+    () => "E essa aqui? Tá curtindo? 😏 isso é só o começo… tem coisa melhor vindo…",
+    () => "Essa eu tirei outro dia… o que achou? 👀 ainda nem te mostrei as melhores",
+  ],
+  3: [
+    () => "Hmm… e se eu te disser que ainda tem MUITO mais onde isso veio? 🫦",
+    () => "Essa foi a mais ousadinha que tirei até agora… imagina o conteúdo completo 😈",
+  ],
+  4: [
+    (nome) =>
+      `${nome ? nome + ", " : ""}chega de enrolação, né? Se você quiser o conteúdo completo é rapidinho: me ajuda com um valor que eu libero TUDO na hora pra você 😘 os dados tão aqui embaixo 💚`,
+    () =>
+      "Então… você viu as amostras. Quer ver tudo? É só me apoiar que eu te libero o acesso completo na hora, com foto, vídeo e atenção especial 🥰",
+  ],
+  5: [
+    () =>
+      "Agora sim! Você é meu assinante oficial 🥰 sempre que eu postar conteúdo novo, você é o primeiro a saber, tá?",
+    () =>
+      "Que bom te ter aqui como assinante! Pode pedir o que quiser que eu te mando 💕",
+  ],
+};
+
+/**
+ * Devolve a fala fixa da etapa atual (roteiro automatizado, sem IA).
+ */
+export function funnelScriptForStep(step: number, userName?: string): string {
+  const falas = FUNNEL_SCRIPTS[step];
+  if (!falas?.length) {
+    // Etapa desconhecida: cai numa fala genérica de assinante.
+    return FUNNEL_SCRIPTS[5][0]();
+  }
+  const sorteada = falas[Math.floor(Math.random() * falas.length)];
+  return sorteada(userName);
+}
+
 // Texto dos dados de pagamento. Configurável por env (PAYMENT_INFO) ou padrão.
 export function paymentInfo(): string {
   return (

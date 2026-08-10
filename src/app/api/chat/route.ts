@@ -15,6 +15,7 @@ import {
   advanceFunnelStep,
   funnelPhotoForStep,
   funnelPhotoLine,
+  funnelScriptForStep,
   buildPaymentPayload,
 } from "@/lib/funnel";
 import {
@@ -174,15 +175,15 @@ export async function POST(request: Request): Promise<NextResponse> {
   }
 
   // Provedor: botão do front tem prioridade; senão usa o DEFAULT_PROVIDER
-  // (agora deepseek por padrão — menos travado e mais picante). openai é o
-  // mais moderado; grok é inteligente e picante.
-  const defaultP = (process.env.DEFAULT_PROVIDER ?? "openai").toLowerCase();
+  // (agora deepseek por padrão — menos travado e mais picante). grok é o
+  // secundário. OpenAI foi REMOVIDA do bot (apenas scripts no funil).
+  const defaultP = (process.env.DEFAULT_PROVIDER ?? "deepseek").toLowerCase();
   const provider: Provider =
     body.provider === "deepseek" || body.provider === "grok"
       ? body.provider
       : defaultP === "deepseek" || defaultP === "grok"
         ? defaultP
-        : "openai";
+        : "deepseek";
 
   // MODO FÁBRICA: acordar/dormir, e conversa acordada roda no prompt honesto.
   const wake = parseWakeCommand(message, CHAT_KEY);
@@ -302,19 +303,18 @@ export async function POST(request: Request): Promise<NextResponse> {
     try {
       const step = await getFunnelStep(CHAT_KEY);
       const photoTag = funnelPhotoForStep(step);
-      const reply = await generateReply(history, provider, CHAT_KEY);
+      // Funil 100% scriptado (sem IA): fala fixa da etapa + foto forçada.
+      const userName = (await getChatMemory(CHAT_KEY)).sobre_o_usuario.nome;
+      const reply = funnelScriptForStep(step, userName);
 
       // Força a foto da etapa (se houver) e, na etapa 4, gera o PIX real
       // (QR + copia-e-cola) no Asaas.
       const photo = photoTag ? await resolveFunnelPhoto(photoTag) : {};
-      // Foto picante + moderação da IA = ela foge de falar da foto. Usa a fala
-      // padronizada (sem IA) sempre que houver foto forçada; o reply da IA fica
-      // pro texto geral da etapa quando não há foto.
+      // A fala padrão da etapa é o texto principal; quando há foto forçada com
+      // descrição, a legenda é a fala padronizada da foto (também sem IA).
       let finalContent = reply;
       if (photo.imageUrl && photoTag && photo.description) {
         finalContent = funnelPhotoLine(photoTag, photo.description);
-      } else if (photo.description) {
-        finalContent = await refineReplyWithPhoto(reply, photo.description, provider);
       }
 
       let qrImageUrl: string | undefined;
