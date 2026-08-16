@@ -56,3 +56,6 @@ next-env.d.ts
 
 # QR codes PIX gerados em runtime (filesystem efêmero em produção) — nunca versionar
 /public/pix/
+
+# lista pessoal de comandos do bot (nunca versionar)
+/comandos-telegram.md

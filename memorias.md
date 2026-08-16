@@ -1,5 +1,24 @@
 # Memórias (VIBECODE)
 
+## Sessão 57 — PIX no Telegram: envio SEM Markdown (mensagem era rejeitada)
+
+- Queixa: "o chat web mostra certinho, mas o telegram ainda não mostra o copia e cola pra pagar".
+- Causa: `sendText` usava `parse_mode: "Markdown"`. A chave PIX copia e cola (BR Code) tem caracteres que o Telegram interpreta como formatação (`*`, `(`, `)`, `_`, `[`) → erro 400 "can't parse entities" → **a mensagem do PIX nem é enviada**. No web o texto é renderizado puro (por isso funciona lá).
+- Fix (`src/lib/telegram.ts`):
+  - `sendText` ganhou parâmetro `parseMode` (default `"Markdown"`); `parseMode: ""` envia texto puro.
+  - Envio do `pixBubble` (etapa 4) usa `sendText(chatId, pixBubble, "")` — o BR Code chega inteiro, sem interpretação.
+- Build OK.
+- Pendência: commit+push+deploy pra Vercel (mudanças do webhook 401 + este fix). Conferir no Telegram real.
+
+## Sessão 56 — Fix webhook Asaas 401: header do token errado
+
+- Queixa: webhook do Asaas retornava `{ok:false, error:"token inválido"}` (401) mesmo com a config da Vercel correta.
+- Causa: o código validava o token em `x-asaas-key` (header) ou `?token=` (query), mas o Asaas envia o token de autenticação no header **`asaas-access-token`** (doc oficial: `asaas_access_token`).
+- Fix (`src/app/api/asaas/webhook/route.ts`): a validação agora lê `asaas-access-token` (principal), `asaas_access_token` e mantém `x-asaas-key`/`?token=` como fallback.
+- Nota: o evento `PAYMENT_CREATED` (do log) NÃO libera conteúdo — só `PAYMENT_CONFIRMED`/`PAYMENT_RECEIVED` fazem. Com o token OK, `PAYMENT_CREATED` responde 200 `action: wait` (esperado).
+- Atenção usuário: `ASAAS_WEBHOOK_KEY` (Vercel) precisa ser IGUAL ao token cadastrado no painel Asaas (Integrações → Webhook → Token de Autenticação). Se não houver token no painel, o header não chega → remover a env ou cadastrar o token no painel.
+- Build OK.
+
 ## Sessão 55 — PIX: exibe só o copia e cola, sem QR code
 
 - Queixa: "ele está exibindo o qr code, mas na verdade tem que exibir o pix copia e cola".

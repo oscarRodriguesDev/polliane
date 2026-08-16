@@ -28,12 +28,18 @@ export async function POST(request: Request): Promise<NextResponse> {
     );
   }
 
-  // Token de validação opcional (header x-asaas-key ou ?token=).
+  // Token de validação opcional. O Asaas envia o token de autenticação do
+  // webhook no header `asaas-access-token` (documentação oficial). Também
+  // aceitamos `asaas_access_token` (variação) e `?token=` (pra teste manual).
   const key = process.env.ASAAS_WEBHOOK_KEY ?? "";
   if (key) {
     const url = new URL(request.url);
     const fromQuery = url.searchParams.get("token");
-    const fromHeader = request.headers.get("x-asaas-key") ?? "";
+    const fromHeader =
+      request.headers.get("asaas-access-token") ??
+      request.headers.get("asaas_access_token") ??
+      request.headers.get("x-asaas-key") ??
+      "";
     if (fromQuery !== key && fromHeader !== key) {
       return NextResponse.json({ ok: false, error: "token inválido" }, { status: 401 });
     }

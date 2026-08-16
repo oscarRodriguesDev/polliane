@@ -148,12 +148,17 @@ async function callApi<T>(method: string, params: Record<string, unknown>): Prom
 }
 
 // Envia mensagem de texto pro usuário.
-export async function sendText(chatId: number, text: string): Promise<void> {
-  await callApi("sendMessage", {
-    chat_id: chatId,
-    text,
-    parse_mode: "Markdown",
-  });
+// `parseMode: ""` envia TEXTO PURO (sem Markdown) — necessário pra chave PIX
+// copia e cola: o BR Code tem caracteres (*, _, [, (, etc.) que o Telegram
+// interpretaria como formatação e rejeitaria com erro 400 (a msg nem chega).
+export async function sendText(
+  chatId: number,
+  text: string,
+  parseMode: "Markdown" | "HTML" | "" = "Markdown"
+): Promise<void> {
+  const params: Record<string, unknown> = { chat_id: chatId, text };
+  if (parseMode) params.parse_mode = parseMode;
+  await callApi("sendMessage", params);
 }
 
 // Aciona o balão "digitando..." real do Telegram (typing) enquanto o bot
@@ -459,11 +464,13 @@ async function processMessage(
         }
       }
       // PIX copia e cola em UMA mensagem de texto única (chave inteira).
+      // Envio SEM Markdown: o BR Code tem caracteres que o Telegram tenta
+      // interpretar como formatação e rejeita (400) — texto puro sempre chega.
       if (step === 4 && pixBubble) {
         const wait = keepTyping(chatId);
         await sleep(randomDelayMs());
         wait.stop();
-        await sendText(chatId, pixBubble);
+        await sendText(chatId, pixBubble, "");
         await dbAddMessage(chatKey, "assistant", pixBubble, undefined, [pixBubble]);
       }
       await advanceFunnelStep(chatKey, step);
