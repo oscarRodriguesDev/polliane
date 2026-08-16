@@ -1,5 +1,16 @@
 # Memórias (VIBECODE)
 
+## Sessão 55 — PIX: exibe só o copia e cola, sem QR code
+
+- Queixa: "ele está exibindo o qr code, mas na verdade tem que exibir o pix copia e cola".
+- **Fix** (etapa 4 do funil — web e Telegram): removida a exibição do QR code como imagem; agora só o PIX copia e cola (texto, balão único) é enviado.
+  - `telegram.ts`: removido o envio do QR (`sendPhotoBase64`/`sendPhotoFile` do QR) na etapa 4; fala + balão do PIX copia e cola em texto único.
+  - `chat/route.ts`: removido `qrImageUrl` (data URL do QR) da mensagem de pagamento; só o `pixBubble` em texto.
+  - `funnel.ts`: removida a linha "Ou escaneia o QR code aqui do lado 💚" do texto gerado em `buildPaymentPayload`.
+- A geração do QR no Asaas (`asaas.ts`) permanece intacta (dado ainda retornado pela API), só não é mais exibido.
+- Build OK (prisma generate + next build).
+- Pendência: validar runtime na etapa 4 no web e Telegram.
+
 ## Sessão 54 — OpenAI removida do bot; funil 100% scriptado (sem IA)
 
 - Pedido: "retire o uso da open ia do meu bot, vamos usar apenas script automatizados".

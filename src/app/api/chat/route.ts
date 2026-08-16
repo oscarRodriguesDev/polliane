@@ -317,13 +317,12 @@ export async function POST(request: Request): Promise<NextResponse> {
         finalContent = funnelPhotoLine(photoTag, photo.description);
       }
 
-      let qrImageUrl: string | undefined;
       let pixBubble: string | undefined;
       if (step === 4) {
         const pay = await buildPaymentPayload(CHAT_KEY);
         // A fala da IA e o bloco de pagamento são separados: o bloco do PIX vai
         // NUM BALÃO ÚNICO (a chave copia-e-cola tem pontos e o splitIntoBubbles
-        // cortaria no meio) + QR code como imagem da mensagem.
+        // cortaria no meio). Exibe o PIX copia e cola (texto), sem QR.
         const linhas = (pay.text ?? "").split("\n");
         const primeiroBanco = linhas.findIndex((l) => l.trim() !== "");
         const idxCopia = linhas.findIndex((l) => /copia e cola/i.test(l));
@@ -332,13 +331,6 @@ export async function POST(request: Request): Promise<NextResponse> {
         } else {
           pixBubble = pay.text;
         }
-        // QR em data URL (base64) — não depende de arquivo gravado em public/,
-        // que o filesystem efêmero da Vercel não serve. Se mesmo assim faltar,
-        // a chave copia-e-cola já vai no pixBubble (balão de texto), então o
-        // pagamento nunca fica sem meios de ser feito.
-        qrImageUrl = pay.qrBase64
-          ? `data:image/png;base64,${pay.qrBase64}`
-          : pay.publicUrl;
       }
 
       const bubbles = splitIntoBubbles(finalContent);
@@ -347,13 +339,12 @@ export async function POST(request: Request): Promise<NextResponse> {
       await addMessage(CHAT_KEY, "assistant", finalContent, msgPayload, bubbles);
       if (pixBubble) {
         // Mensagem dedicada ao pagamento: balão único com a chave inteira.
-        // Se o QR falhar (sem base64 nem arquivo), o texto da chave ainda vai
-        // ser o fallback de imagem da mensagem (linha vazia => só o balão).
+        // Sem QR — só o PIX copia e cola em texto.
         await addMessage(
           CHAT_KEY,
           "assistant",
           pixBubble,
-          qrImageUrl ?? undefined,
+          undefined,
           [pixBubble]
         );
       }

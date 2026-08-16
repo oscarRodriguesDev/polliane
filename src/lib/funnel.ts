@@ -366,7 +366,6 @@ export async function buildPaymentPayload(chatKey: string): Promise<{
     "",
     pix.pixCopyPaste,
     "",
-    "Ou escaneia o QR code aqui do lado 💚",
     "Assim que o pagamento cair, eu libero TODO o conteúdo na hora pra você. 😘",
   ].join("\n");
 

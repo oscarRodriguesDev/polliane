@@ -413,10 +413,8 @@ async function processMessage(
         finalContent = funnelPhotoLine(photoTag, photo.description);
       }
 
-      // Etapa 4: gera o PIX real (QR + copia-e-cola). O QR preferencialmente
-      // sai direto do base64 (sem disco); só cai no filePath se não houver.
-      let qrBase64: string | undefined;
-      let qrFilePath: string | undefined;
+      // Etapa 4: gera o PIX real (copia e cola). Só o TEXTO da chave é
+      // exibido — sem QR (pedido do usuário).
       let pixBubble: string | undefined;
       if (step === 4) {
         const pay = await buildPaymentPayload(chatKey);
@@ -425,40 +423,17 @@ async function processMessage(
         const linhas = (pay.text ?? "").split("\n");
         const idxCopia = linhas.findIndex((l) => /copia e cola/i.test(l));
         pixBubble = idxCopia >= 0 ? linhas.slice(idxCopia).join("\n").trim() : pay.text;
-        qrBase64 = pay.qrBase64;
-        qrFilePath = pay.filePath;
       }
 
       const bubbles = splitIntoBubbles(finalContent);
-      // Na etapa 4 a foto seguida é vazia; o QR vai na msg de pagamento abaixo.
+      // Na etapa 4 a foto seguida é vazia; o PIX copia e cola vai na msg de
+      // pagamento abaixo (texto único, sem QR).
       await dbAddMessage(chatKey, "assistant", finalContent, step === 4 ? undefined : photo.imageUrl, bubbles);
       if (photo.description) await rememberPhotoSent(chatKey, photo.description);
 
       const [first, ...rest] = bubbles;
       typing.stop();
-      if (qrBase64 || qrFilePath) {
-        // Foto do QR + caption com a FALA da IA. O QR em base64 é preferido
-        // (funciona no filesystem efêmero); o filePath é o fallback local.
-        if (qrBase64) {
-          await sendPhotoBase64(chatId, qrBase64, photoCaption(first ?? finalContent));
-        } else {
-          await sendPhotoFile(chatId, qrFilePath!, photoCaption(first ?? finalContent));
-        }
-        for (const bubble of rest) {
-          const wait = keepTyping(chatId);
-          await sleep(randomDelayMs());
-          wait.stop();
-          await sendText(chatId, bubble);
-        }
-        // Bloco do PIX em UMA mensagem de texto única (chave inteira).
-        if (pixBubble) {
-          const wait = keepTyping(chatId);
-          await sleep(randomDelayMs());
-          wait.stop();
-          await sendText(chatId, pixBubble);
-          await dbAddMessage(chatKey, "assistant", pixBubble, undefined, [pixBubble]);
-        }
-      } else if (photo.filePath) {
+      if (photo.filePath) {
         await sendPhotoFile(chatId, photo.filePath, photoCaption(first ?? finalContent));
         for (const bubble of rest) {
           const wait = keepTyping(chatId);
@@ -482,6 +457,14 @@ async function processMessage(
           wait.stop();
           await sendText(chatId, bubble);
         }
+      }
+      // PIX copia e cola em UMA mensagem de texto única (chave inteira).
+      if (step === 4 && pixBubble) {
+        const wait = keepTyping(chatId);
+        await sleep(randomDelayMs());
+        wait.stop();
+        await sendText(chatId, pixBubble);
+        await dbAddMessage(chatKey, "assistant", pixBubble, undefined, [pixBubble]);
       }
       await advanceFunnelStep(chatKey, step);
       return;
